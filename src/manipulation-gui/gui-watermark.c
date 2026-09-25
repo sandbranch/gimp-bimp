@@ -139,6 +139,7 @@ GtkWidget* bimp_watermark_gui_new(watermark_settings settings)
     for(watermark_position current_pos = WM_POS_TL; current_pos < WM_POS_END; current_pos++) {
         position_buttons[current_pos] = gtk_radio_button_new_from_widget(first_button);
         gtk_button_set_image(GTK_BUTTON(position_buttons[current_pos]), image_new_from_resource(g_strconcat("/gimp/plugin/bimp/icons/pos-", watermark_pos_get_abbreviation(current_pos), "-icon.png", NULL)));
+        gtk_button_set_always_show_image(GTK_BUTTON(position_buttons[current_pos]), TRUE);
         gtk_widget_set_tooltip_text (position_buttons[current_pos], watermark_pos_get_string(current_pos));
         gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(position_buttons[current_pos]), FALSE);
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(position_buttons[current_pos]), settings->position == current_pos);

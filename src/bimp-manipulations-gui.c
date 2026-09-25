@@ -95,7 +95,7 @@ void bimp_open_editwindow(manipulation man, gboolean first_time)
     if (result == GTK_RESPONSE_ACCEPT) {
         save(man->settings);
     }
-    else if (result == GTK_RESPONSE_REJECT && first_time == TRUE){ 
+    else if (first_time == TRUE) { /* Cancel, Escape or closing the window */
         bimp_remove_manipulation(man);
         bimp_refresh_sequence_panel();
     }

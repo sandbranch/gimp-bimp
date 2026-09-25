@@ -102,9 +102,6 @@ void bimp_show_gui()
     gtk_window_set_default_size(GTK_WINDOW(bimp_window_main), (int)(PREVIEW_IMG_W * 2.5), SEQ_BUTTON_H + PREVIEW_IMG_H + 160);
     gtk_container_set_border_width(GTK_CONTAINER(bimp_window_main), 5);
     
-    // Forces the visualization of label AND images on buttons (especially for Windows)
-    GtkSettings *default_settings = gtk_settings_get_default();
-    g_object_set(default_settings, "gtk-button-images", TRUE, NULL);
     
     vbox_main = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     panel_sequence = sequence_panel_new();
@@ -221,6 +218,7 @@ static GtkWidget* option_panel_new()
     button_samefolder = gtk_button_new();
     GtkWidget* samefolder_icon = gtk_image_new_from_icon_name("edit-undo", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_image(GTK_BUTTON(button_samefolder), samefolder_icon);
+    gtk_button_set_always_show_image(GTK_BUTTON(button_samefolder), TRUE);
     gtk_widget_set_tooltip_text (button_samefolder, _("Use the selected file's location as the output"));
     
     bimp_opt_alertoverwrite = BIMP_ASK_OVERWRITE; 
@@ -445,6 +443,7 @@ static void update_selection (gchar* filename)
         // update preview
         GdkPixbuf *pixbuf_prev = gdk_pixbuf_new_from_file_at_scale(filename, FILE_PREVIEW_W - 20, FILE_PREVIEW_H - 30, TRUE, NULL);
         gtk_button_set_image(GTK_BUTTON(button_preview), gtk_image_new_from_pixbuf (pixbuf_prev));
+        gtk_button_set_always_show_image(GTK_BUTTON(button_preview), TRUE);
         gtk_widget_show(button_preview);
         
         // update current selection
@@ -759,21 +758,20 @@ static void open_folder_chooser(GtkWidget *widget, gpointer data)
     gtk_widget_destroy (folder_chooser);
 }
 
+/* the last folder of the output path, shortened to 24 characters */
 static char* get_outputfolder_name()
 {
-    char* last_folder = g_strrstr(bimp_output_folder, FILE_SEPARATOR_STR) + 1;
-    if (last_folder == NULL || strlen(last_folder) == 0) last_folder = bimp_output_folder;
-    char *folder_name = malloc(25);
-    if (strlen(last_folder) > 24) {
-        char *folder_name = malloc(25);
-        memcpy(folder_name, last_folder, 21);
-        folder_name[21] = folder_name[22] = folder_name[23] = '.';
-        folder_name[24] = '\0';
-        return folder_name;
+    char* sep = g_strrstr(bimp_output_folder, FILE_SEPARATOR_STR);
+    char* last_folder = (sep != NULL && strlen(sep + 1) > 0) ? sep + 1 : bimp_output_folder;
+
+    if (g_utf8_strlen(last_folder, -1) > 24) {
+        gchar *start = g_utf8_substring(last_folder, 0, 21);
+        gchar *name = g_strconcat(start, "...", NULL);
+        g_free(start);
+        return name;
     }
-    else {
-        return last_folder;
-    }
+
+    return g_strdup(last_folder);
 }
 
 static void open_outputfolder_chooser(GtkWidget *widget, gpointer data) 
@@ -802,9 +800,9 @@ static void open_outputfolder_chooser(GtkWidget *widget, gpointer data)
 static void set_source_output_folder(GtkWidget *widget, gpointer data) 
 {
     if (selected_source_folder != NULL) {
-        gtk_button_set_label(GTK_BUTTON(button_outfolder), get_outputfolder_name());
-        gtk_widget_set_tooltip_text(button_outfolder, selected_source_folder);
         bimp_output_folder = g_strdup(selected_source_folder);
+        gtk_button_set_label(GTK_BUTTON(button_outfolder), get_outputfolder_name());
+        gtk_widget_set_tooltip_text(button_outfolder, bimp_output_folder);
     }
 }
 
@@ -955,7 +953,9 @@ void bimp_refresh_sequence_panel()
     /* Rebuild panel */
     g_slist_foreach(bimp_selected_manipulations, (GFunc)add_manipulation_button, NULL);
     
-    button = gtk_button_new_from_stock(_("_Add"));
+    button = gtk_button_new_with_mnemonic(_("_Add"));
+    gtk_button_set_image(GTK_BUTTON(button), gtk_image_new_from_icon_name("list-add", GTK_ICON_SIZE_DND));
+    gtk_button_set_always_show_image(GTK_BUTTON(button), TRUE);
     gtk_button_set_image_position(GTK_BUTTON(button), GTK_POS_TOP);
     gtk_widget_set_size_request (button, SEQ_BUTTON_W - 20, SEQ_BUTTON_H);
     gtk_box_pack_start(GTK_BOX(hbox_sequence), button, FALSE, FALSE, 3);
@@ -971,6 +971,7 @@ static void add_manipulation_button(manipulation man)
     
     button = gtk_button_new();
     gtk_button_set_image(GTK_BUTTON(button), image_new_from_resource(man->icon));
+    gtk_button_set_always_show_image(GTK_BUTTON(button), TRUE);
     gtk_button_set_image_position(GTK_BUTTON(button), GTK_POS_TOP);
     gtk_widget_set_size_request(button, SEQ_BUTTON_W, SEQ_BUTTON_H);
     gtk_box_pack_start(GTK_BOX(hbox_sequence), button, FALSE, FALSE, 3);
@@ -1152,41 +1153,14 @@ void bimp_progress_bar_set(double fraction, char* text) {
 }
 
 void bimp_set_busy(gboolean busy) {
-    GList *actions_children, *tmp_child;
-    struct _ResponseData { gint response_id; };
-    
     bimp_is_busy = busy;
     
     gtk_dialog_set_response_sensitive (GTK_DIALOG(bimp_window_main), GTK_RESPONSE_CLOSE, !busy);
     gtk_dialog_set_response_sensitive (GTK_DIALOG(bimp_window_main), GTK_RESPONSE_HELP, !busy);
     
-    /* procedure that hides and shows some widgets in the dialog's action area. Compatible with GTK+ 2.16 */
-    GtkWidget* actions = gtk_dialog_get_action_area (GTK_DIALOG(bimp_window_main));
-    actions_children = gtk_container_get_children (GTK_CONTAINER (actions));
-    tmp_child = actions_children;
-    while (tmp_child != NULL)
-    {
-        GtkWidget *widget = tmp_child->data;
-        struct _ResponseData *rd = g_object_get_data (G_OBJECT (widget), "gtk-dialog-response-data");
-
-        if (rd && rd->response_id == GTK_RESPONSE_APPLY) {
-            if (busy) {
-                gtk_widget_hide (widget);
-            } else {
-                gtk_widget_show (widget);
-            }
-        }
-        else if (rd && rd->response_id == GTK_RESPONSE_CANCEL) {
-            if (!busy) {
-                gtk_widget_hide (widget);
-            } else {
-                gtk_widget_show (widget);
-            }
-        }
-
-        tmp_child = g_list_next (tmp_child);
-    }
-    g_list_free (actions_children);
+    /* while busy, Stop replaces Apply */
+    gtk_widget_set_visible(gtk_dialog_get_widget_for_response(GTK_DIALOG(bimp_window_main), GTK_RESPONSE_APPLY), !busy);
+    gtk_widget_set_visible(gtk_dialog_get_widget_for_response(GTK_DIALOG(bimp_window_main), GTK_RESPONSE_CANCEL), busy);
     
     gtk_widget_set_sensitive(panel_sequence, !busy);
     gtk_widget_set_sensitive(panel_options, !busy);

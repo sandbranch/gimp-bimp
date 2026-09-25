@@ -24,11 +24,13 @@ GtkWidget* bimp_fliprotate_gui_new(fliprotate_settings settings)
     button_flipH = gtk_toggle_button_new_with_label(_("Horizontally"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button_flipH), settings->flip_h);
     gtk_button_set_image(GTK_BUTTON(button_flipH), image_new_from_resource("/gimp/plugin/bimp/icons/stock-flip-horizontal.png"));
+    gtk_button_set_always_show_image(GTK_BUTTON(button_flipH), TRUE);
     gtk_button_set_image_position(GTK_BUTTON(button_flipH), GTK_POS_TOP);
     
     button_flipV = gtk_toggle_button_new_with_label(_("Vertically"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button_flipV), settings->flip_v);
     gtk_button_set_image(GTK_BUTTON(button_flipV), image_new_from_resource("/gimp/plugin/bimp/icons/stock-flip-vertical.png"));
+    gtk_button_set_always_show_image(GTK_BUTTON(button_flipV), TRUE);
     gtk_button_set_image_position(GTK_BUTTON(button_flipV), GTK_POS_TOP);
     
     hbox_rotate = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
