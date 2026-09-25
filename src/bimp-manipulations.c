@@ -83,7 +83,8 @@ gboolean bimp_list_contains_savingplugin()
     
     for (iterator = bimp_selected_manipulations; iterator && found == FALSE; iterator = iterator->next) {
         man = (manipulation)(iterator->data);
-        if (man->type == MANIP_USERDEF && strstr(((userdef_settings)(man->settings))->procedure, "-save") != NULL) found = TRUE;
+        if (man->type == MANIP_USERDEF && ((userdef_settings)(man->settings))->procedure != NULL &&
+            strstr(((userdef_settings)(man->settings))->procedure, "-export") != NULL) found = TRUE;
     }
 
     return found;
@@ -146,9 +147,7 @@ manipulation manipulation_resize_new()
     ((resize_settings)resize->settings)->resize_mode_width = RESIZE_PERCENT;
     ((resize_settings)resize->settings)->resize_mode_height = RESIZE_PERCENT;
     ((resize_settings)resize->settings)->stretch_mode = STRETCH_ALLOW;
-    gdk_color_parse("black", &(((resize_settings)resize->settings)->padding_color));
-    gdk_colormap_alloc_color(gdk_colormap_get_system(), &(((resize_settings)resize->settings)->padding_color), TRUE, TRUE);
-    ((resize_settings)resize->settings)->padding_color_alpha = G_MAXUINT16;
+    gdk_rgba_parse(&(((resize_settings)resize->settings)->padding_color), "black");
     ((resize_settings)resize->settings)->interpolation = GIMP_INTERPOLATION_CUBIC;
     ((resize_settings)resize->settings)->change_res = FALSE;
     ((resize_settings)resize->settings)->new_res_x = 72.000;
@@ -185,7 +184,7 @@ manipulation manipulation_fliprotate_new()
     ((fliprotate_settings)fliprotate->settings)->flip_h = FALSE;
     ((fliprotate_settings)fliprotate->settings)->flip_v = FALSE;
     ((fliprotate_settings)fliprotate->settings)->rotate = FALSE;
-    ((fliprotate_settings)fliprotate->settings)->rotation_type = GIMP_ROTATE_90;
+    ((fliprotate_settings)fliprotate->settings)->rotation_type = GIMP_ROTATE_DEGREES90;
     
     return fliprotate;
 }
@@ -226,10 +225,9 @@ manipulation manipulation_watermark_new()
     watermark->icon = "/gimp/plugin/bimp/icons/stock-watermark.png";
     watermark->settings = (watermark_settings) g_malloc(sizeof(struct manip_watermark_set));
     ((watermark_settings)watermark->settings)->mode = TRUE;
-    ((watermark_settings)watermark->settings)->text = "";
-    ((watermark_settings)watermark->settings)->font = pango_font_description_copy(pango_font_description_from_string("Sans 16px"));
-    gdk_color_parse("black", &(((watermark_settings)watermark->settings)->color));
-    gdk_colormap_alloc_color(gdk_colormap_get_system(), &(((watermark_settings)watermark->settings)->color), TRUE, TRUE);
+    ((watermark_settings)watermark->settings)->text = g_strdup("");
+    ((watermark_settings)watermark->settings)->font = g_strdup("Sans 16px");
+    gdk_rgba_parse(&(((watermark_settings)watermark->settings)->color), "black");
     ((watermark_settings)watermark->settings)->image_file = NULL;
     ((watermark_settings)watermark->settings)->image_sizemode = WM_IMG_NOSIZE;
     ((watermark_settings)watermark->settings)->image_size_percent = 25.0;
@@ -248,16 +246,7 @@ manipulation manipulation_changeformat_new()
     changeformat->icon = "/gimp/plugin/bimp/icons/stock-changeformat.png";
     changeformat->settings = (changeformat_settings) g_malloc(sizeof(struct manip_changeformat_set));
     ((changeformat_settings)changeformat->settings)->format = FORMAT_JPEG;
-    ((changeformat_settings)changeformat->settings)->params = (format_params_jpeg) g_malloc(sizeof(struct changeformat_params_jpeg));
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->quality = 85.0;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->smoothing = 0.0;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->entropy = TRUE;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->progressive = FALSE;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->comment = "";
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->subsampling = 2;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->baseline = TRUE;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->markers = 0;
-    ((format_params_jpeg)((changeformat_settings)changeformat->settings)->params)->dct = 1;
+    ((changeformat_settings)changeformat->settings)->params = format_params_new(FORMAT_JPEG);
     
     return changeformat;
 }
@@ -269,7 +258,7 @@ manipulation manipulation_rename_new()
     rename->type = MANIP_RENAME;
     rename->icon = "/gimp/plugin/bimp/icons/stock-rename.png";
     rename->settings = (rename_settings) g_malloc(sizeof(struct manip_rename_set));
-    ((rename_settings)rename->settings)->pattern = RENAME_KEY_ORIG;
+    ((rename_settings)rename->settings)->pattern = g_strdup(RENAME_KEY_ORIG);
     
     return rename;
 }
@@ -282,8 +271,7 @@ manipulation manipulation_userdef_new()
     userdef->icon = "/gimp/plugin/bimp/icons/stock-userdef.png";
     userdef->settings = (userdef_settings) g_malloc(sizeof(struct manip_userdef_set));
     ((userdef_settings)userdef->settings)->procedure = NULL;
-    ((userdef_settings)userdef->settings)->num_params = 0;
-    ((userdef_settings)userdef->settings)->params = NULL;
+    ((userdef_settings)userdef->settings)->config = NULL;
     
     return userdef;
 }
@@ -321,4 +309,76 @@ char* bimp_manip_get_string (manipulation_type type)
     }
     
     return man_string;
+}
+
+/* format options with defaults (those of GIMP 3's exporters), so that a set
+ * file that names only some options still gives a complete, valid set */
+format_params format_params_new(format_type format)
+{
+    if (format == FORMAT_GIF) {
+        format_params_gif p = g_new0(struct changeformat_params_gif, 1);
+        p->interlace = FALSE;
+        return p;
+    }
+    else if (format == FORMAT_JPEG) {
+        format_params_jpeg p = g_new0(struct changeformat_params_jpeg, 1);
+        p->quality = 85.0;
+        p->smoothing = 0.0;
+        p->entropy = TRUE;
+        p->progressive = FALSE;
+        p->comment = g_strdup("");
+        p->subsampling = 2;
+        p->baseline = TRUE;
+        p->markers = 0;
+        p->dct = 1;
+        return p;
+    }
+    else if (format == FORMAT_PNG) {
+        format_params_png p = g_new0(struct changeformat_params_png, 1);
+        p->interlace = FALSE;
+        p->compression = 9;
+        p->savebgc = TRUE;
+        p->savegamma = FALSE;
+        p->saveoff = FALSE;
+        p->savephys = TRUE;
+        p->savetime = TRUE;
+        p->savecomm = FALSE;
+        p->savetrans = FALSE;
+        return p;
+    }
+    else if (format == FORMAT_TGA) {
+        format_params_tga p = g_new0(struct changeformat_params_tga, 1);
+        p->rle = TRUE;
+        p->origin = 0;
+        return p;
+    }
+    else if (format == FORMAT_TIFF) {
+        return g_new0(struct changeformat_params_tiff, 1);
+    }
+    else if (format == FORMAT_HEIF) {
+        format_params_heif p = g_new0(struct changeformat_params_heif, 1);
+        p->quality = 50;
+        return p;
+    }
+    else if (format == FORMAT_WEBP) {
+        format_params_webp p = g_new0(struct changeformat_params_webp, 1);
+        p->preset = 0;
+        p->lossless = FALSE;
+        p->quality = 90;
+        p->alpha_quality = 100;
+        p->animation = FALSE;
+        p->anim_loop = TRUE;
+        p->minimize_size = TRUE;
+        p->kf_distance = 50;
+        p->delay = 200;
+        p->force_delay = FALSE;
+        return p;
+    }
+    else if (format == FORMAT_AVIF) {
+        format_params_avif p = g_new0(struct changeformat_params_avif, 1);
+        p->quality = 50;
+        return p;
+    }
+
+    return NULL;
 }

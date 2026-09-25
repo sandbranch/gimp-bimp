@@ -16,7 +16,7 @@ GtkWidget* bimp_rename_gui_new(rename_settings settings, GtkWidget* parent)
     GtkWidget *gui, *frame_help;
     GtkWidget *label_help;
     
-    gui = gtk_vbox_new(FALSE, 5);
+    gui = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     
     entry_pattern = gtk_entry_new();
     gtk_entry_set_max_length(GTK_ENTRY(entry_pattern), 50);

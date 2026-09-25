@@ -1,0 +1,6 @@
+# BIMP 3.0
+[FLIPROTATE]
+flip_h=true
+flip_v=false
+rotate=true
+rotation_type=0

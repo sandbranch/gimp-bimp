@@ -10,7 +10,10 @@
 #define PLUG_IN_WEBSITE "http://www.alessandrofrancesconi.it/projects/bimp"
 #define PLUG_IN_BINARY "bimp"
 #define PLUG_IN_PROC "plug-in-bimp"
-#define PLUG_IN_VERSION "2.6"
+#define PLUG_IN_PROC_BATCH "plug-in-bimp-batch"
+#ifndef PLUG_IN_VERSION
+#define PLUG_IN_VERSION "3.0"
+#endif
 
 #define BIMP_RESULT_OK 1
 #define BIMP_RESULT_WARNING 0
@@ -30,8 +33,11 @@ extern gboolean bimp_opt_keepdates;
 
 extern gboolean bimp_is_busy;
 
+/* TRUE when running from the dialog, FALSE for plug-in-bimp-batch */
+extern gboolean bimp_interactive;
+
 extern GSList* bimp_supported_procedures;
 void init_supported_procedures(void);
+gboolean bimp_procedure_is_supported(const gchar*);
 
 #endif
-

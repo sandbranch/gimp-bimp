@@ -1,0 +1,9 @@
+# BIMP 3.0
+[WATERMARK0]
+mode=true
+text=BIMP
+font=Sans Bold 40px
+color=#ffff00000000
+opacity=100
+edge_distance=10
+position=8

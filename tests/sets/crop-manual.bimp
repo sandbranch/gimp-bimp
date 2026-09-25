@@ -1,0 +1,6 @@
+# BIMP 3.0
+[CROP]
+manual=true
+new_w=100
+new_h=50
+start_pos=1

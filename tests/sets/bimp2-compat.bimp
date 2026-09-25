@@ -1,0 +1,32 @@
+# BIMP 2.6
+# MANIPULATION SET DEFINITION
+[RESIZE]
+new_w_pc=100
+new_h_pc=100
+new_w_px=320
+new_h_px=240
+resize_mode_width=1
+resize_mode_height=1
+stretch_mode=0
+padding_color=#000000000000
+padding_color_alpha=65535
+interpolation=2
+change_res=false
+new_res_x=72
+new_res_y=72
+
+[COLOR]
+brightness=0
+contrast=0
+levels_auto=false
+grayscale=true
+
+[USERDEF0]
+procedure=plug-in-gauss
+num_params=6
+PARAM0=NOT_USED
+PARAM1=NOT_USED
+PARAM2=NOT_USED
+PARAM3=5
+PARAM4=5
+PARAM5=0

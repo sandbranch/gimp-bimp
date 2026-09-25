@@ -1,0 +1,16 @@
+src/bimp-gui.c
+src/bimp-manipulations-gui.c
+src/bimp-manipulations.c
+src/bimp-operate.c
+src/bimp-serialize.c
+src/bimp-utils.c
+src/bimp.c
+src/manipulation-gui/gui-changeformat.c
+src/manipulation-gui/gui-color.c
+src/manipulation-gui/gui-crop.c
+src/manipulation-gui/gui-fliprotate.c
+src/manipulation-gui/gui-rename.c
+src/manipulation-gui/gui-resize.c
+src/manipulation-gui/gui-sharpblur.c
+src/manipulation-gui/gui-userdef.c
+src/manipulation-gui/gui-watermark.c

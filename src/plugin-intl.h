@@ -1,17 +1,8 @@
 #ifndef __PLUGIN_INTL_H__
 #define __PLUGIN_INTL_H__
 
-#define GETTEXT_PACKAGE "gimp20-plugin-bimp"
-
-#include <libintl.h>
-
-#define _(String) gettext (String)
-
-#ifdef gettext_noop
-#    define N_(String) gettext_noop (String)
-#else
-#    define N_(String) (String)
-#endif
-
+/* GETTEXT_PACKAGE ("bimp") comes from the build: GIMP 3 binds the domain
+ * named like the plug-in to the catalogs in <plug-in folder>/locale */
+#include <glib/gi18n-lib.h>
 
 #endif /* __PLUGIN_INTL_H__ */

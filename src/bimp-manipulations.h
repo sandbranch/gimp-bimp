@@ -2,7 +2,6 @@
 #define __BIMP_MANIPULATIONS_H__
 
 #include <gtk/gtk.h>
-#include <gdk-pixbuf/gdk-pixdata.h>
 #include <libgimp/gimp.h>
 
 #define RENAME_KEY_ORIG "$$"
@@ -140,8 +139,7 @@ typedef struct manip_resize_set {
     resize_mode resize_mode_width;
     resize_mode resize_mode_height;
     stretch_mode stretch_mode;
-    GdkColor padding_color;
-    guint16 padding_color_alpha;
+    GdkRGBA padding_color; /* with alpha */
     GimpInterpolationType interpolation;
     gboolean change_res;
     gdouble new_res_x;
@@ -180,8 +178,8 @@ typedef struct manip_sharpblur_set {
 typedef struct manip_watermark_set {
     gboolean mode; /* TRUE = text mode; FALSE = image mode */
     gchar* text;
-    PangoFontDescription* font;
-    GdkColor color;
+    gchar* font; /* Pango font description, e.g. "Sans 16px" */
+    GdkRGBA color;
     char* image_file;
     watermark_image_sizemode image_sizemode;
     float image_size_percent;
@@ -262,10 +260,12 @@ typedef struct manip_rename_set {
     gchar* pattern;
 } *rename_settings;
 
+/* A GIMP procedure and its settings: the arguments that the user sets,
+ * serialized from its GimpProcedureConfig. The image, its drawables and the
+ * run mode are filled in for each image when the batch runs. */
 typedef struct manip_userdef_set {
     gchar* procedure;
-    gint num_params;
-    GimpParam* params; /* array of procedure params (GimpParamDef structs) */
+    gchar* config; /* serialized GimpProcedureConfig, or NULL for the defaults */
 } *userdef_settings;
 
 manipulation bimp_append_manipulation(manipulation_type);
@@ -285,6 +285,7 @@ manipulation manipulation_watermark_new(void);
 manipulation manipulation_changeformat_new(void); 
 manipulation manipulation_rename_new(void); 
 manipulation manipulation_userdef_new(void); 
+format_params format_params_new(format_type);
 
 extern GSList* bimp_selected_manipulations; /* Manipulations selected by user */
 

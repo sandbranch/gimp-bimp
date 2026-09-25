@@ -1,0 +1,8 @@
+# BIMP 3.0
+[RESIZE]
+new_w_px=200
+new_h_px=100
+resize_mode_width=1
+resize_mode_height=2
+stretch_mode=1
+interpolation=2

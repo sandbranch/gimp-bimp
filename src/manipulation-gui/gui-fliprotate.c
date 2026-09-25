@@ -15,11 +15,11 @@ GtkWidget* bimp_fliprotate_gui_new(fliprotate_settings settings)
     GtkWidget *label_flip, *label_rotate;
     GtkWidget *align_flip, *align_rotate;
     
-    gui = gtk_vbox_new(FALSE, 5);
+    gui = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     
     label_flip = gtk_label_new(g_strconcat(_("Flip"), ":", NULL));
-    hbox_flip = gtk_hbox_new(FALSE, 5);
-    align_flip = gtk_alignment_new(0.5, 0, 0, 0);
+    hbox_flip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    align_flip = bimp_align_new(0.5, 0, 0, 0);
     
     button_flipH = gtk_toggle_button_new_with_label(_("Horizontally"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button_flipH), settings->flip_h);
@@ -31,14 +31,14 @@ GtkWidget* bimp_fliprotate_gui_new(fliprotate_settings settings)
     gtk_button_set_image(GTK_BUTTON(button_flipV), image_new_from_resource("/gimp/plugin/bimp/icons/stock-flip-vertical.png"));
     gtk_button_set_image_position(GTK_BUTTON(button_flipV), GTK_POS_TOP);
     
-    hbox_rotate = gtk_hbox_new(FALSE, 5);
-    align_rotate = gtk_alignment_new(0.5, 0, 0, 0);
+    hbox_rotate = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    align_rotate = bimp_align_new(0.5, 0, 0, 0);
     label_rotate = gtk_label_new(g_strconcat(_("Rotation"), ":", NULL));
-    combo_rotate = gtk_combo_box_new_text();
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_rotate), _("None"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_rotate), "90°");
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_rotate), "180°");
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_rotate), "270°");
+    combo_rotate = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_rotate), _("None"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_rotate), "90°");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_rotate), "180°");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_rotate), "270°");
     
     int active_index;
     if(!settings->rotate) {
@@ -46,9 +46,9 @@ GtkWidget* bimp_fliprotate_gui_new(fliprotate_settings settings)
     }
     else {
         switch(settings->rotation_type) {
-            case GIMP_ROTATE_90: active_index = 1; break;
-            case GIMP_ROTATE_180: active_index = 2; break;
-            case GIMP_ROTATE_270: active_index = 3; break;
+            case GIMP_ROTATE_DEGREES90: active_index = 1; break;
+            case GIMP_ROTATE_DEGREES180: active_index = 2; break;
+            case GIMP_ROTATE_DEGREES270: active_index = 3; break;
             default: active_index = 0; break;
         }
     }
@@ -78,13 +78,13 @@ void bimp_fliprotate_save(fliprotate_settings orig_settings)
     orig_settings->rotate = (active_index > 0);
     if (active_index > 0) {
         if (active_index == 1) {
-            orig_settings->rotation_type = GIMP_ROTATE_90;
+            orig_settings->rotation_type = GIMP_ROTATE_DEGREES90;
         }
         else if (active_index == 2) {
-            orig_settings->rotation_type = GIMP_ROTATE_180;
+            orig_settings->rotation_type = GIMP_ROTATE_DEGREES180;
         }
         else if (active_index == 3) {
-            orig_settings->rotation_type = GIMP_ROTATE_270;
+            orig_settings->rotation_type = GIMP_ROTATE_DEGREES270;
         }
     }
 }

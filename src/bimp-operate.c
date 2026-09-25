@@ -1,8 +1,9 @@
-// Functions called when the user clicks on 'APPLY'
- 
+// Functions called when the user clicks on 'APPLY', or by plug-in-bimp-batch
+
 
 #include <string.h>
-#include <unistd.h>
+#include <math.h>
+#include <float.h>
 #include <gtk/gtk.h>
 #include <libgimp/gimp.h>
 #include <libgimpbase/gimpbase.h>
@@ -30,19 +31,10 @@ static gboolean apply_userdef(userdef_settings, image_output);
 static gboolean apply_rename(rename_settings, image_output, char*);
 
 static gboolean image_save(format_type, image_output, format_params);
-static gboolean image_save_bmp(image_output);
-static gboolean image_save_gif(image_output, gboolean);
-static gboolean image_save_icon(image_output);
-static gboolean image_save_jpeg(image_output, float, float, gboolean, gboolean, gchar*, int, gboolean, int, int);
-static gboolean image_save_heif(image_output, int, gboolean);
-static gboolean image_save_png(image_output, gboolean, int, gboolean, gboolean, gboolean, gboolean, gboolean, gboolean, gboolean);
-static gboolean image_save_tga(image_output, gboolean, int);
-static gboolean image_save_tiff(image_output, int);
-static gboolean image_save_webp(image_output, int, gboolean, float, float, gboolean, gboolean, gboolean, int, gboolean, gboolean, gboolean, int, int);
-static gboolean image_save_avif(image_output, gboolean, int);
-static gboolean image_save_exr(image_output);
 
 static int overwrite_result(char*, GtkWidget*);
+static void report_error(const gchar*);
+static void refresh_drawables(image_output);
 
 static char* current_datetime;
 static int processed_count;
@@ -70,19 +62,33 @@ static gdouble* colorcurve_ctr_points_b;
 static int colorcurve_num_points_a;
 static gdouble* colorcurve_ctr_points_a;
 
-void bimp_start_batch(gpointer parent_dialog)
+/* in the window an error opens a dialog; in a batch it goes to the terminal */
+static void report_error(const gchar* message)
 {
-    bimp_set_busy(TRUE);
+    if (bimp_interactive) {
+        bimp_show_error_dialog((char*)message, bimp_window_main);
+    }
+    else {
+        g_printerr("BIMP: %s\n", message);
+    }
+}
 
+static void progress_set(double fraction, char* text)
+{
+    if (bimp_interactive) bimp_progress_bar_set(fraction, text);
+}
+
+static void batch_prepare(void)
+{
     // initialization
     g_print("\nBIMP - Batch Manipulation Plugin\nStart batch processing...\n");
     processed_count = 0;
     success_count = 0;
     total_images = g_slist_length(bimp_input_filenames);
-    bimp_progress_bar_set(0.0, "");
-    
+    progress_set(0.0, "");
+
     bimp_init_batch();
-    
+
     current_datetime = get_datetime();
     common_folder_path = NULL;
 
@@ -93,9 +99,9 @@ void bimp_start_batch(gpointer parent_dialog)
         char ** common_folder;
         char ** current_folder;
         size_t common_folder_size, current_folder_size;
-        
+
         path = comp_get_filefolder(g_slist_nth(bimp_input_filenames,0)->data);
-        
+
         common_folder = get_path_folders(path);
         common_folder_size = 0;
         for (common_folder_size = 0; common_folder[common_folder_size] != NULL; ++common_folder_size);
@@ -114,7 +120,7 @@ void bimp_start_batch(gpointer parent_dialog)
                 common_folder[common_folder_size-1] = NULL;
                 common_folder_size--;
             }
-            
+
             for (j=0; j < common_folder_size; ++j)
             {
                 if (strcmp(common_folder[j], current_folder[j]) != 0) {
@@ -132,14 +138,32 @@ void bimp_start_batch(gpointer parent_dialog)
             g_strfreev(current_folder);
         }
 
-        if (need_hierarchy) 
+        if (need_hierarchy)
             common_folder_path = g_strjoinv(FILE_SEPARATOR_STR, common_folder);
-        
+
         g_strfreev(common_folder);
     }
-    
-    // start on a new thread
-    guint batch_idle_tag = g_idle_add((GSourceFunc)process_image, parent_dialog);
+}
+
+void bimp_start_batch(gpointer parent_dialog)
+{
+    bimp_set_busy(TRUE);
+    batch_prepare();
+
+    // one image per main loop iteration, so the window stays responsive
+    g_idle_add((GSourceFunc)process_image, parent_dialog);
+}
+
+/* runs the whole batch at once, without a window (plug-in-bimp-batch) */
+void bimp_run_batch_sync(gint* processed, gint* errors)
+{
+    bimp_is_busy = TRUE;
+    batch_prepare();
+
+    while (process_image(NULL));
+
+    *processed = processed_count;
+    *errors = processed_count - success_count;
 }
 
 void bimp_init_batch()
@@ -148,75 +172,83 @@ void bimp_init_batch()
     list_contains_rename = bimp_list_contains_manip(MANIP_RENAME);
     list_contains_watermark = bimp_list_contains_manip(MANIP_WATERMARK);
     list_contains_savingplugin = bimp_list_contains_savingplugin();
-    
+
     colorcurve_init = FALSE;
 }
 
 static gboolean process_image(gpointer parent)
 {
     gboolean success = TRUE;
-    
-    image_output imageout = (image_output)g_malloc(sizeof(struct imageout_str));
+
+    image_output imageout = (image_output)g_malloc0(sizeof(struct imageout_str));
     char* orig_filename = NULL;
     char* orig_basename = NULL;
     char* orig_file_ext = NULL;
     char* output_file_comp = NULL;
-    
-    // store original file path and name 
+
+    // store original file path and name
     orig_filename = g_slist_nth (bimp_input_filenames, processed_count)->data;
-    orig_basename = g_strdup(comp_get_filename(orig_filename)); 
-    
-    // store original extension and check error cases 
+    orig_basename = g_strdup(comp_get_filename(orig_filename));
+
+    // store original extension and check error cases
     orig_file_ext = g_strdup(strrchr(orig_basename, '.'));
     if (orig_file_ext == NULL) {
-        /* under Linux, GtkFileChooser lets to pick an image file without extension, but GIMP cannot 
+        /* under Linux, GtkFileChooser lets to pick an image file without extension, but GIMP cannot
          * save it back if its format remains unchanged. Operation can continue only if a MANIP_CHANGEFORMAT
          * is present */
         if (list_contains_changeformat) {
             orig_file_ext = g_malloc0(sizeof(char));
-        }        
+        }
         else {
-            bimp_show_error_dialog(g_strdup_printf(_("Can't save image \"%s\": input file has no extension.\nYou can solve this error by adding a \"Change format or compression\" step"), orig_basename), bimp_window_main);
+            gchar *msg = g_strdup_printf(_("Can't save image \"%s\": input file has no extension.\nYou can solve this error by adding a \"Change format or compression\" step"), orig_basename);
+            report_error(msg);
+            g_free(msg);
             success = FALSE;
             goto process_end;
         }
     }
     else if (g_ascii_strcasecmp(orig_file_ext, ".svg") == 0 && !list_contains_changeformat) {
-        bimp_show_error_dialog(g_strdup_printf(_("GIMP can't save %s back to its original SVG format.\nYou can solve this error by adding a \"Change format or compression\" step"), orig_basename), bimp_window_main);
+        gchar *msg = g_strdup_printf(_("GIMP can't save %s back to its original SVG format.\nYou can solve this error by adding a \"Change format or compression\" step"), orig_basename);
+        report_error(msg);
+        g_free(msg);
         success = FALSE;
         goto process_end;
     }
-    
-    g_print("\nWorking on file %d of %d (%s)\n", processed_count + 1, total_images, orig_filename);
-    bimp_progress_bar_set(((double)processed_count)/total_images, g_strdup_printf(_("Working on file \"%s\"..."), orig_basename));
 
-    // rename and save process... 
-    orig_basename[strlen(orig_basename) - strlen(orig_file_ext)] = '\0'; // remove extension from basename 
-    
-    // check if a rename pattern is defined 
+    g_print("\nWorking on file %d of %d (%s)\n", processed_count + 1, total_images, orig_filename);
+    if (bimp_interactive) {
+        gchar *text = g_strdup_printf(_("Working on file \"%s\"..."), orig_basename);
+        progress_set(((double)processed_count)/total_images, text);
+        g_free(text);
+    }
+
+    // rename and save process...
+    orig_basename[strlen(orig_basename) - strlen(orig_file_ext)] = '\0'; // remove extension from basename
+
+    // check if a rename pattern is defined
     if(list_contains_rename) {
         g_print("Applying RENAME...\n");
         apply_rename((rename_settings)(bimp_list_get_manip(MANIP_RENAME))->settings, imageout, orig_basename);
     }
     else {
-        imageout->filename = orig_basename;
+        imageout->filename = g_strdup(orig_basename);
     }
 
-    // To keep the folder hierarchy 
+    // To keep the folder hierarchy
     if (common_folder_path == NULL)    {
         // Not selected or required, everything goes into the same destination folder
         output_file_comp = g_malloc0(sizeof(char));
     }
     else {
         // keep folders to add to output path
-        output_file_comp = 
+        output_file_comp =
             g_strndup(&orig_filename[strlen(common_folder_path)+1],
             strlen(orig_filename)-(strlen(common_folder_path)+1)
-            -strlen(orig_basename)-strlen(orig_file_ext)); 
+            -strlen(orig_basename)-strlen(orig_file_ext));
     }
-    
+
     if (strlen(output_file_comp) > 0) {
-#ifdef _WIN32        
+#ifdef _WIN32
         // Clean output_file_comp
         // Should only be concerned for ':' in Drive letter
         int i;
@@ -225,56 +257,38 @@ static gboolean process_image(gpointer parent)
                 output_file_comp[i] = '_';
 #endif
         // Create path if needed
-        g_mkdir_with_parents(
-            g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, NULL), 
-            0777
-        );
+        gchar *dir = g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, NULL);
+        g_mkdir_with_parents(dir, 0777);
+        g_free(dir);
     }
-    
-    // save the final image in output dir with proper format and params 
+
+    // save the final image in output dir with proper format and params
     format_type final_format = -1;
     format_params params = NULL;
-    
+    gchar *name;
+
     if(list_contains_changeformat) {
         changeformat_settings settings = (changeformat_settings)(bimp_list_get_manip(MANIP_CHANGEFORMAT))->settings;
         final_format = settings->format;
         params = settings->params;
 
         g_print("Changing FORMAT to %s\n", format_type_string[final_format][0]);
-        imageout->filename = g_strconcat(imageout->filename, ".", format_type_string[final_format][0], NULL); // append new file extension 
-        imageout->filepath = g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, imageout->filename, NULL); // build new path 
-    }
-    // TO CHECK what apply_userdef does once coded 
-
-    else if (list_contains_savingplugin) {
-        // leave filename without extension and proceed calling each saving plugin
-        imageout->filename = g_strconcat(imageout->filename, ".dds", NULL);
-        imageout->filepath = g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, imageout->filename, NULL); // build new path 
-        
-        GSList *iterator = NULL;
-        manipulation man;
-        for (iterator = bimp_selected_manipulations; iterator; iterator = iterator->next) {
-            man = (manipulation)(iterator->data);
-            if (man->type == MANIP_USERDEF && strstr(((userdef_settings)(man->settings))->procedure, "-save") != NULL) {
-                /* found a saving plugin, execute it
-                // TODO!!!! This won't work yet, we need a way to extract the file extension managed by the selected saving plugin
-                 * e.g. "file-dds-save" -> "dds" (don't do it with regexp on plugin's name... too easy...) */
-                apply_userdef((userdef_settings)(man->settings), imageout);
-            }
-        }
+        name = g_strconcat(imageout->filename, ".", format_type_string[final_format][0], NULL); // append new file extension
     }
     else {
-        // if not specified, save in original format 
-        imageout->filename = g_strconcat(imageout->filename, orig_file_ext, NULL); // append old file extension     
-        imageout->filepath = g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, imageout->filename, NULL); // build new path         
-        final_format = -1;    
+        // if not specified, save in original format
+        name = g_strconcat(imageout->filename, orig_file_ext, NULL); // append old file extension
+        final_format = -1;
     }
-    
-    // check if writing possible 
+    g_free(imageout->filename);
+    imageout->filename = name;
+    imageout->filepath = g_strconcat(bimp_output_folder, FILE_SEPARATOR_STR, output_file_comp, imageout->filename, NULL); // build new path
+
+    // check if writing possible
     gboolean will_overwrite = FALSE;
     if (bimp_opt_alertoverwrite != BIMP_OVERWRITE_SKIP_ASK) {
         // file already exists ?
-        will_overwrite = g_file_test(imageout->filepath, G_FILE_TEST_IS_REGULAR);        
+        will_overwrite = g_file_test(imageout->filepath, G_FILE_TEST_IS_REGULAR);
         if (will_overwrite) {
             // "Don't overwrite" without confirmation
             if (bimp_opt_alertoverwrite == BIMP_DONT_OVERWRITE_SKIP_ASK) {
@@ -291,29 +305,41 @@ static gboolean process_image(gpointer parent)
             }
         }
     }
-    
-    // apply all the main manipulations 
-    bimp_apply_drawable_manipulations(imageout, (gchar*)orig_filename, (gchar*)orig_basename); 
-    
+    else {
+        will_overwrite = g_file_test(imageout->filepath, G_FILE_TEST_IS_REGULAR);
+    }
+
+    // apply all the main manipulations
+    if (!bimp_apply_drawable_manipulations(imageout, (gchar*)orig_filename, (gchar*)orig_basename)) {
+        gchar *msg = g_strdup_printf(_("Could not open \"%s\""), orig_filename);
+        report_error(msg);
+        g_free(msg);
+        success = FALSE;
+        goto process_end;
+    }
+
     time_t mod_time = -1;
     if (will_overwrite && bimp_opt_keepdates) {
         // I must keep the dates even if the file has been overwritten
         mod_time = get_modification_time(imageout->filepath);
         if (mod_time == -1) g_print("An error occurred when retrieving the modification date of file.\n");
     }
-    
-    // Save 
+
+    // Save
     g_print("Saving file %s in %s\n", imageout->filename, imageout->filepath);
-    image_save(final_format, imageout, params);
-    
+    if (!image_save(final_format, imageout, params)) {
+        g_printerr("BIMP: could not save %s\n", imageout->filepath);
+        success = FALSE;
+    }
+
     if (will_overwrite && bimp_opt_keepdates && mod_time > -1) {
         // replace with the old dates
         int res = set_modification_time(imageout->filepath, mod_time);
         if (res == -1) g_print("An error occurred when replacing the modification date of file.\n");
     }
 
-    gimp_image_delete(imageout->image_id); // is it useful? 
-    
+    gimp_image_delete(imageout->image);
+
 process_end:
 
     g_free(orig_basename);
@@ -321,25 +347,30 @@ process_end:
     g_free(output_file_comp);
     g_free(imageout->filename);
     g_free(imageout->filepath);
+    g_free(imageout->drawables);
     g_free(imageout);
 
     processed_count++;
-    if (success) success_count++; 
-    
-    // TODO: errors check here 
+    if (success) success_count++;
+
     if (!bimp_is_busy) {
-        bimp_progress_bar_set(0.0, _("Operations stopped"));
+        progress_set(0.0, _("Operations stopped"));
         g_print("\nStopped, %d files processed.\n", processed_count);
         return FALSE;
     }
     else {
         if (processed_count == total_images) {
             int errors_count = processed_count - success_count;
-            bimp_progress_bar_set(1.0, g_strdup_printf(_("End, all files have been processed with %d errors"), errors_count));
+            if (bimp_interactive) {
+                gchar *text = g_strdup_printf(_("End, all files have been processed with %d errors"), errors_count);
+                progress_set(1.0, text);
+                g_free(text);
+            }
             g_print("\nEnd, %d files have been processed with %d errors.\n", processed_count, errors_count);
-            
-            bimp_set_busy(FALSE);
-            
+
+            if (bimp_interactive) bimp_set_busy(FALSE);
+            else bimp_is_busy = FALSE;
+
             return FALSE;
         }
         else {
@@ -348,22 +379,33 @@ process_end:
     }
 }
 
-void bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_filename, gchar* orig_basename)
+static void refresh_drawables(image_output out)
 {
-    imageout->image_id = gimp_file_load(GIMP_RUN_NONINTERACTIVE, orig_filename, orig_basename); // load file and get image id 
-    // LOAD ERROR CHECK HERE 
-    g_print("Image ID is %d\n", imageout->image_id);
-    
+    g_free(out->drawables);
+    out->drawables = gimp_image_get_layers(out->image);
+    for (out->drawable_count = 0; out->drawables[out->drawable_count] != NULL; out->drawable_count++);
+}
+
+/* loads the image and applies every manipulation except rename and format;
+ * returns FALSE if the image cannot be loaded */
+gboolean bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_filename, gchar* orig_basename)
+{
+    GFile *file = g_file_new_for_path(orig_filename);
+    imageout->image = gimp_file_load(GIMP_RUN_NONINTERACTIVE, file);
+    g_object_unref(file);
+
+    if (imageout->image == NULL) return FALSE;
+
     // stop saving the undo steps for this session
-    gimp_image_undo_freeze(imageout->image_id);
-    
-    imageout->drawable_ids = gimp_image_get_layers(imageout->image_id, &imageout->drawable_count); // get all drawables
+    gimp_image_undo_freeze(imageout->image);
+
+    refresh_drawables(imageout);
     g_print("Total drawables count: %d\n", imageout->drawable_count);
-    
-    // apply all the intermediate manipulations 
+
+    // apply all the intermediate manipulations
     g_slist_foreach(bimp_selected_manipulations, (GFunc)apply_manipulation, imageout);
-    
-    //  watermark at last 
+
+    //  watermark at last
     if(list_contains_watermark) {
         GSList* watermarks = bimp_list_get_manip_all(MANIP_WATERMARK);
         GSList *iterator = NULL;
@@ -371,25 +413,26 @@ void bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_filena
             g_print("Applying WATERMARK...\n");
             apply_watermark((watermark_settings)(((manipulation)(iterator->data))->settings), imageout);
         }
-
-        
+        g_slist_free(watermarks);
     }
-    
-    // re-enable undo 
-    gimp_image_undo_thaw(imageout->image_id);
+
+    // re-enable undo
+    gimp_image_undo_thaw(imageout->image);
+
+    return TRUE;
 }
 
-static gboolean apply_manipulation(manipulation man, image_output out) 
+static gboolean apply_manipulation(manipulation man, image_output out)
 {
     gboolean success = TRUE;
-    
+
     if (man->type == MANIP_RESIZE) {
         g_print("Applying RESIZE...\n");
-        apply_resize((resize_settings)(bimp_list_get_manip(MANIP_RESIZE))->settings, out);
+        success = apply_resize((resize_settings)(man->settings), out);
     }
     else if (man->type == MANIP_CROP) {
         g_print("Applying CROP...\n");
-        apply_crop((crop_settings)(bimp_list_get_manip(MANIP_CROP))->settings, out);
+        success = apply_crop((crop_settings)(man->settings), out);
     }
     else if (man->type == MANIP_FLIPROTATE) {
         g_print("Applying FLIP OR ROTATE...\n");
@@ -403,44 +446,44 @@ static gboolean apply_manipulation(manipulation man, image_output out)
         g_print("Applying SHARPBLUR...\n");
         success = apply_sharpblur((sharpblur_settings)(man->settings), out);
     }
-    else if (man->type == MANIP_USERDEF && strstr(((userdef_settings)(man->settings))->procedure, "-save") == NULL) {
+    else if (man->type == MANIP_USERDEF && ((userdef_settings)(man->settings))->procedure != NULL) {
         g_print("Applying %s...\n", ((userdef_settings)(man->settings))->procedure);
         success = apply_userdef((userdef_settings)(man->settings), out);
     }
-    
+
     return success;
 }
 
-static gboolean apply_resize(resize_settings settings, image_output out) 
+static gboolean apply_resize(resize_settings settings, image_output out)
 {
-    gboolean success = FALSE;
+    gboolean success = TRUE;
     gint orig_w, orig_h, final_w, final_h, view_w, view_h;
     gdouble orig_res_x, orig_res_y;
-    
+
     if (settings->change_res) {
         success = gimp_image_get_resolution(
-            out->image_id,
+            out->image,
             &orig_res_x,
             &orig_res_y
         );
-        
+
         if ((settings->new_res_x != orig_res_x) || (settings->new_res_y != orig_res_y)) {
-            // change resolution 
+            // change resolution
             success = gimp_image_set_resolution(
-                out->image_id,
+                out->image,
                 settings->new_res_x,
                 settings->new_res_y
             );
         }
     }
 
-    orig_w = gimp_image_width(out->image_id);
-    orig_h = gimp_image_height(out->image_id);
-    
+    orig_w = gimp_image_get_width(out->image);
+    orig_h = gimp_image_get_height(out->image);
+
     if (settings->resize_mode_width == RESIZE_DISABLE && settings->resize_mode_height == RESIZE_DISABLE) {
-        return !settings->change_res || success;
+        return success;
     }
-    
+
     gdouble newwpct, newwpctmax;
     if (settings->resize_mode_width == RESIZE_PERCENT) {
         newwpct = newwpctmax = settings->new_w_pc / 100.0;
@@ -452,7 +495,7 @@ static gboolean apply_resize(resize_settings settings, image_output out)
         newwpct = 1;
         newwpctmax = DBL_MAX;
     }
-    
+
     gdouble newhpct, newhpctmax;
     if (settings->resize_mode_height == RESIZE_PERCENT) {
         newhpct = newhpctmax = settings->new_h_pc / 100.0;
@@ -464,16 +507,16 @@ static gboolean apply_resize(resize_settings settings, image_output out)
         newhpct = 1;
         newhpctmax = DBL_MAX;
     }
-    
+
     if(settings->stretch_mode == STRETCH_ASPECT) {
         gdouble newpct = min(newwpctmax, newhpctmax);
-            
+
         final_w = view_w = round(orig_w * newpct);
         final_h = view_h = round(orig_h * newpct);
     }
     else if (settings->stretch_mode == STRETCH_PADDED) {
         gdouble newpct = min(newwpctmax, newhpctmax);
-            
+
         final_w = round(orig_w * newpct);
         final_h = round(orig_h * newpct);
         view_w = round(orig_w * newwpct);
@@ -483,77 +526,63 @@ static gboolean apply_resize(resize_settings settings, image_output out)
         final_w = view_w = round(orig_w * newwpct);
         final_h = view_h = round(orig_h * newhpct);
     }
-    
-    // use gimp_image_scale instead
-    GimpInterpolationType old_interpolation;
-    old_interpolation = gimp_context_get_interpolation();
-    
-    success = gimp_context_set_interpolation (settings->interpolation);
+
+    gimp_context_push();
+    gimp_context_set_interpolation (settings->interpolation);
     success = gimp_image_scale (
-        out->image_id, 
-        final_w, 
+        out->image,
+        final_w,
         final_h
     );
-    success = gimp_context_set_interpolation (old_interpolation);
-    
+    gimp_context_pop();
+
     // add a padding if requested
     if (settings->stretch_mode == STRETCH_PADDED) {
-        
+
         // the padding will be drawn using a coloured layer at the bottom of the image
-        int imageType = gimp_image_base_type(out->image_id);
-        int layerType;
-        if (imageType == 2) layerType = 4; // see http://oldhome.schmorp.de/marc/pdb/gimp_layer_new.html
-        else if (imageType == 1) layerType = 2;
-        else layerType = 0;
-        
-        if (gimp_drawable_has_alpha(out->drawable_ids[0])) layerType ++;
-        
-        gint32 layerId = gimp_layer_new(
-            out->image_id,
+        GimpImageType layerType = gimp_image_get_base_type(out->image) * 2; /* RGB, GRAY or INDEXED */
+        if (gimp_drawable_has_alpha(GIMP_DRAWABLE(out->drawables[0]))) layerType++;
+
+        GimpLayer *layer = gimp_layer_new(
+            out->image,
             "padding_layer",
             view_w, view_h,
             layerType,
-            (settings->padding_color_alpha / (float)G_MAXUINT16) * 100,
-            GIMP_LAYER_MODE_NORMAL_LEGACY
+            settings->padding_color.alpha * 100,
+            GIMP_LAYER_MODE_NORMAL
         );
-        
-        gimp_image_insert_layer(
-            out->image_id,
-            layerId,
-            0,
-            0
-        );
-        
-        gimp_image_lower_item_to_bottom(out->image_id, layerId);
-        
+
+        gimp_image_insert_layer(out->image, layer, NULL, 0);
+        gimp_image_lower_item_to_bottom(out->image, GIMP_ITEM(layer));
+
         // fill it with the selected color
-        GimpRGB old_background, new_background;
-            
-        gimp_context_get_background(&old_background);
-        gimp_rgb_parse_hex (&new_background, gdk_color_to_string(&(settings->padding_color)), strlen(gdk_color_to_string(&(settings->padding_color))));
-        gimp_context_set_background(&new_background);
-        gimp_drawable_fill(layerId, GIMP_FILL_BACKGROUND);
-        gimp_context_set_background(&old_background);
-        
+        GeglColor *background = rgba_to_gegl(&(settings->padding_color));
+        gimp_context_push();
+        gimp_context_set_background(background);
+        gimp_drawable_fill(GIMP_DRAWABLE(layer), GIMP_FILL_BACKGROUND);
+        gimp_context_pop();
+        g_object_unref(background);
+
         // move it to the center
-        gimp_item_transform_translate(layerId, -abs(view_w - final_w) / 2, -abs(view_h - final_h) / 2);
-        
+        gimp_item_transform_translate(GIMP_ITEM(layer), -abs(view_w - final_w) / 2, -abs(view_h - final_h) / 2);
+
         // finish changing the canvas size accordingly
-        success = gimp_image_resize_to_layers(out->image_id);
+        success = gimp_image_resize_to_layers(out->image);
+        refresh_drawables(out);
     }
-    
+
     return success;
 }
 
-static gboolean apply_crop(crop_settings settings, image_output out) 
+static gboolean apply_crop(crop_settings settings, image_output out)
 {
     gboolean success = TRUE;
     gint newWidth, newHeight, oldWidth, oldHeight, posX = 0, posY = 0;
     gboolean keepX = FALSE, keepY = FALSE;
-    
-    oldWidth = gimp_image_width(out->image_id);
-    oldHeight = gimp_image_height(out->image_id);
-    
+
+    oldWidth = gimp_image_get_width(out->image);
+    oldHeight = gimp_image_get_height(out->image);
+
     if (settings->manual) {
         newWidth = min(oldWidth, settings->new_w);
         newHeight = min(oldHeight, settings->new_h);
@@ -568,289 +597,310 @@ static gboolean apply_crop(crop_settings settings, image_output out)
             ratio1 = (float)crop_preset_ratio[settings->ratio][0];
             ratio2 = (float)crop_preset_ratio[settings->ratio][1];
         }
-        
-        if (( (float)oldWidth / oldHeight ) > ( ratio1 / ratio2) ) { 
-            // crop along the width 
+
+        if (( (float)oldWidth / oldHeight ) > ( ratio1 / ratio2) ) {
+            // crop along the width
             newHeight = oldHeight;
             newWidth = round(( ratio1 * (float)newHeight ) / ratio2);
             keepY = TRUE;
-        } else { 
-            // crop along the height 
+        } else {
+            // crop along the height
             newWidth = oldWidth;
             newHeight = round(( ratio2 * (float)newWidth) / ratio1);
             keepX = TRUE;
         }
     }
-    
+
     switch (settings->start_pos) {
-        case CROP_START_TL: 
+        case CROP_START_TL:
             posX = 0;
             posY = 0;
             break;
-            
-        case CROP_START_TR: 
+
+        case CROP_START_TR:
             posX = (oldWidth - newWidth);
             posY = 0;
             break;
-            
-        case CROP_START_BL: 
+
+        case CROP_START_BL:
             posX = 0;
             posY = (oldHeight - newHeight);
             break;
-            
-        case CROP_START_BR: 
+
+        case CROP_START_BR:
             posX = (oldWidth - newWidth);
             posY = (oldHeight - newHeight);
             break;
-        
-        default: 
+
+        default:
             if (!keepX) posX = (oldWidth - newWidth) / 2;
             if (!keepY) posY = (oldHeight - newHeight) / 2;
             break;
     }
-    
+
     success = gimp_image_crop (
-        out->image_id,
+        out->image,
         newWidth,
         newHeight,
         posX,
         posY
     );
-    
+
     return success;
 }
 
-static gboolean apply_fliprotate(fliprotate_settings settings, image_output out) 
+static gboolean apply_fliprotate(fliprotate_settings settings, image_output out)
 {
     gboolean success = TRUE;
-    
+
     if (settings->flip_h) {
-        // do horizontal flip 
-        success = gimp_image_flip (
-            out->image_id,
-            GIMP_ORIENTATION_HORIZONTAL
-        );
+        success = gimp_image_flip (out->image, GIMP_ORIENTATION_HORIZONTAL);
     }
-    
+
     if (settings->flip_v) {
-        // do vertical flip 
-        success = gimp_image_flip (
-            out->image_id,
-            GIMP_ORIENTATION_VERTICAL
-        );
+        success = gimp_image_flip (out->image, GIMP_ORIENTATION_VERTICAL);
     }
-    
+
     if (settings->rotate) {
-        // do rotation 
-        success = gimp_image_rotate (
-            out->image_id,
-            settings->rotation_type
-        );
+        success = gimp_image_rotate (out->image, settings->rotation_type);
     }
-    
+
     return success;
 }
 
-static gboolean apply_color(color_settings settings, image_output out) 
+static gboolean apply_color(color_settings settings, image_output out)
 {
     gboolean success = TRUE;
-    
-    int default_drawable = out->drawable_ids[0];
+    int i;
+
+    GimpDrawable *default_drawable = GIMP_DRAWABLE(out->drawables[0]);
     if (settings->brightness != 0 || settings->contrast != 0) {
-        // brightness or contrast have been modified, apply the manipulation 
-        
+        // brightness or contrast have been modified, apply the manipulation
+
         if (!gimp_drawable_is_rgb(default_drawable)) {
-            gimp_image_convert_rgb(out->image_id);
+            gimp_image_convert_rgb(out->image);
         }
-        
-        int i;
+
         for (i = 0; i < out->drawable_count; i++) {
-            success = gimp_drawable_brightness_contrast(
-                out->drawable_ids[i], 
-                settings->brightness, 
-                settings->contrast
-            );
+            GimpDrawableFilter *filter = gimp_drawable_filter_new(
+                GIMP_DRAWABLE(out->drawables[i]), "gimp:brightness-contrast", "BIMP");
+            GimpDrawableFilterConfig *config = gimp_drawable_filter_get_config(filter);
+            g_object_set(config,
+                "brightness", settings->brightness,
+                "contrast", settings->contrast,
+                NULL);
+            gimp_drawable_filter_update(filter);
+            gimp_drawable_merge_filter(GIMP_DRAWABLE(out->drawables[i]), filter);
         }
     }
-    
+
     if (settings->grayscale && !gimp_drawable_is_gray(default_drawable)) {
-        // do grayscale conversion 
-        success = gimp_image_convert_grayscale(out->image_id);
+        // do grayscale conversion
+        success = gimp_image_convert_grayscale(out->image);
     }
-    
+
     if (settings->levels_auto) {
-        // do levels correction 
-        int i;
+        // do levels correction
         for (i = 0; i < out->drawable_count; i++) {
-            success = gimp_drawable_levels_stretch(out->drawable_ids[i]);
+            success = gimp_drawable_levels_stretch(GIMP_DRAWABLE(out->drawables[i]));
         }
     }
-    
+
     if (settings->curve_file != NULL && !gimp_drawable_is_indexed(default_drawable)) {
-        // apply curve 
-        
+        // apply curve
+
         if (!colorcurve_init) { // read from the curve file only the first time
+            colorcurve_num_points_v = colorcurve_num_points_r = colorcurve_num_points_g = 0;
+            colorcurve_num_points_b = colorcurve_num_points_a = 0;
             success = parse_curve_file(
-                settings->curve_file, 
-                &colorcurve_num_points_v, &colorcurve_ctr_points_v, 
-                &colorcurve_num_points_r, &colorcurve_ctr_points_r, 
-                &colorcurve_num_points_g, &colorcurve_ctr_points_g, 
-                &colorcurve_num_points_b, &colorcurve_ctr_points_b, 
+                settings->curve_file,
+                &colorcurve_num_points_v, &colorcurve_ctr_points_v,
+                &colorcurve_num_points_r, &colorcurve_ctr_points_r,
+                &colorcurve_num_points_g, &colorcurve_ctr_points_g,
+                &colorcurve_num_points_b, &colorcurve_ctr_points_b,
                 &colorcurve_num_points_a, &colorcurve_ctr_points_a
-            ); 
-            
+            );
+
             colorcurve_init = TRUE;
         }
         else success = TRUE;
-        
+
         if (success) {
-            
-            int i;
+            /* gimp:curves needs a GimpCurve object, which plug-ins cannot
+             * create yet: the spline call is the way for plug-ins */
+            G_GNUC_BEGIN_IGNORE_DEPRECATIONS
             for (i = 0; i < out->drawable_count; i++) {
+                GimpDrawable *d = GIMP_DRAWABLE(out->drawables[i]);
+
                 if (colorcurve_num_points_v >= 4 && colorcurve_num_points_v <= 34) {
-                    success = gimp_drawable_curves_spline(out->drawable_ids[i], GIMP_HISTOGRAM_VALUE, colorcurve_num_points_v, colorcurve_ctr_points_v);
+                    success = gimp_drawable_curves_spline(d, GIMP_HISTOGRAM_VALUE, colorcurve_num_points_v, colorcurve_ctr_points_v);
                 }
-                
+
                 if (colorcurve_num_points_r >= 4 && colorcurve_num_points_r <= 34) {
-                    success = gimp_drawable_curves_spline(out->drawable_ids[i], GIMP_HISTOGRAM_RED, colorcurve_num_points_r, colorcurve_ctr_points_r);
+                    success = gimp_drawable_curves_spline(d, GIMP_HISTOGRAM_RED, colorcurve_num_points_r, colorcurve_ctr_points_r);
                 }
-                
+
                 if (colorcurve_num_points_g >= 4 && colorcurve_num_points_g <= 34) {
-                    success = gimp_drawable_curves_spline(out->drawable_ids[i], GIMP_HISTOGRAM_GREEN, colorcurve_num_points_g, colorcurve_ctr_points_g);
+                    success = gimp_drawable_curves_spline(d, GIMP_HISTOGRAM_GREEN, colorcurve_num_points_g, colorcurve_ctr_points_g);
                 }
-                
+
                 if (colorcurve_num_points_b >= 4 && colorcurve_num_points_b <= 34) {
-                    success = gimp_drawable_curves_spline(out->drawable_ids[i], GIMP_HISTOGRAM_BLUE, colorcurve_num_points_b, colorcurve_ctr_points_b);
+                    success = gimp_drawable_curves_spline(d, GIMP_HISTOGRAM_BLUE, colorcurve_num_points_b, colorcurve_ctr_points_b);
                 }
-                
-                if (colorcurve_num_points_a >= 4 && colorcurve_num_points_a <= 34) {
-                    success = gimp_drawable_curves_spline(out->drawable_ids[i], GIMP_HISTOGRAM_ALPHA, colorcurve_num_points_a, colorcurve_ctr_points_a);
+
+                if (colorcurve_num_points_a >= 4 && colorcurve_num_points_a <= 34 && gimp_drawable_has_alpha(d)) {
+                    success = gimp_drawable_curves_spline(d, GIMP_HISTOGRAM_ALPHA, colorcurve_num_points_a, colorcurve_ctr_points_a);
                 }
             }
+            G_GNUC_END_IGNORE_DEPRECATIONS
         }
     }
-    
+
     return success;
 }
 
-static gboolean apply_sharpblur(sharpblur_settings settings, image_output out) 
+/* GIMP 2's plug-in-gauss took a radius; GEGL's gaussian blur takes the
+ * standard deviation. GIMP converts between them this way. */
+static gdouble gauss_radius_to_std_dev(gdouble radius)
+{
+    return sqrt(-(radius * radius) / (2.0 * log(1.0 / 255.0)));
+}
+
+static gboolean apply_sharpblur(sharpblur_settings settings, image_output out)
 {
     gboolean success = TRUE;
-    gint nreturn_vals;
-    
+    int i;
+
     if (settings->amount < 0) {
-        // do sharp 
-        int i;
+        // sharpen: GIMP 2's plug-in-sharpen is gone; an unsharp mask with a
+        // small radius gives the same kind of result, stronger with the amount
         for (i = 0; i < out->drawable_count; i++) {
-            GimpParam *return_vals = gimp_run_procedure(
-                "plug_in_sharpen", // could use plug_in_unsharp_mask, but there's a datatype bug in 2.6.x version 
-                &nreturn_vals,
-                GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-                GIMP_PDB_IMAGE, out->image_id,
-                GIMP_PDB_DRAWABLE, out->drawable_ids[i],
-                GIMP_PDB_INT32, -(settings->amount),
-                GIMP_PDB_END
-            );
+            GimpDrawableFilter *filter = gimp_drawable_filter_new(
+                GIMP_DRAWABLE(out->drawables[i]), "gegl:unsharp-mask", "BIMP");
+            g_object_set(gimp_drawable_filter_get_config(filter),
+                "std-dev", 1.0,
+                "scale", -(settings->amount) / 100.0 * 2.0,
+                "threshold", 0.0,
+                NULL);
+            gimp_drawable_filter_update(filter);
+            gimp_drawable_merge_filter(GIMP_DRAWABLE(out->drawables[i]), filter);
         }
     } else if (settings->amount > 0){
-        // do blur 
-        float minsize = min(gimp_image_width(out->image_id)/4, gimp_image_height(out->image_id)/4);
+        // blur
+        float minsize = min(gimp_image_get_width(out->image)/4, gimp_image_get_height(out->image)/4);
         float radius = (minsize / 100) * settings->amount;
-        
-        int i;
+        gdouble std_dev = gauss_radius_to_std_dev(radius);
+
         for (i = 0; i < out->drawable_count; i++) {
-            GimpParam *return_vals = gimp_run_procedure(
-                "plug_in_gauss",
-                &nreturn_vals,
-                GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-                GIMP_PDB_IMAGE, out->image_id,
-                GIMP_PDB_DRAWABLE, out->drawable_ids[i],
-                GIMP_PDB_FLOAT, radius,
-                GIMP_PDB_FLOAT, radius,
-                GIMP_PDB_INT32, 0,
-                GIMP_PDB_END
-            );
+            GimpDrawableFilter *filter = gimp_drawable_filter_new(
+                GIMP_DRAWABLE(out->drawables[i]), "gegl:gaussian-blur", "BIMP");
+            g_object_set(gimp_drawable_filter_get_config(filter),
+                "std-dev-x", std_dev,
+                "std-dev-y", std_dev,
+                NULL);
+            gimp_drawable_filter_update(filter);
+            gimp_drawable_merge_filter(GIMP_DRAWABLE(out->drawables[i]), filter);
         }
     }
-    
+
     return success;
 }
 
-static gboolean apply_watermark(watermark_settings settings, image_output out) 
+/* finds the GIMP font for a Pango font description such as "DejaVu Sans Bold 16px" */
+static GimpFont* find_font(PangoFontDescription *desc)
+{
+    PangoFontDescription *nosize = pango_font_description_copy(desc);
+    GimpFont *font;
+    gchar *name;
+
+    pango_font_description_unset_fields(nosize, PANGO_FONT_MASK_SIZE);
+    name = pango_font_description_to_string(nosize);
+    font = gimp_font_get_by_name(name);
+    g_free(name);
+    pango_font_description_free(nosize);
+
+    if (font == NULL && pango_font_description_get_family(desc) != NULL) {
+        GimpFont **fonts = gimp_fonts_get_list(pango_font_description_get_family(desc));
+        if (fonts != NULL && fonts[0] != NULL) font = fonts[0];
+        g_free(fonts);
+    }
+    if (font == NULL) font = gimp_font_get_by_name("Sans-serif");
+
+    return font;
+}
+
+static gboolean apply_watermark(watermark_settings settings, image_output out)
 {
     gboolean success = TRUE;
-    gint32 layerId;
+    GimpLayer *layer;
     gdouble posX, posY;
     gint wmwidth, wmheight, wmasc, wmdesc;
-    
-    gint imgwidth = gimp_image_width(out->image_id);
-    gint imgheight = gimp_image_height(out->image_id);
-    
+
+    gint imgwidth = gimp_image_get_width(out->image);
+    gint imgheight = gimp_image_get_height(out->image);
+
     if (settings->mode) {
-        if (strlen(settings->text) == 0) {
+        if (settings->text == NULL || strlen(settings->text) == 0) {
             return TRUE;
         }
-        
-        GimpRGB old_foreground, new_foreground;
-        
-        gimp_context_get_foreground(&old_foreground);
-        gimp_rgb_parse_hex (&new_foreground, gdk_color_to_string(&(settings->color)), strlen(gdk_color_to_string(&(settings->color))));
-        gimp_context_set_foreground(&new_foreground);
-        
-        gimp_text_get_extents_fontname(
-            settings->text,
-            pango_font_description_get_size(settings->font) / PANGO_SCALE,
-            GIMP_PIXELS,
-            pango_font_description_get_family(settings->font),
-            &wmwidth,
-            &wmheight,
-            &wmasc,
-            &wmdesc
-        );
-        
+
+        PangoFontDescription *desc = pango_font_description_from_string(settings->font);
+        GimpFont *font = find_font(desc);
+        gdouble size = pango_font_description_get_size(desc) / (gdouble)PANGO_SCALE;
+        if (!pango_font_description_get_size_is_absolute(desc)) {
+            // points: to pixels at the resolution of the image
+            gdouble xres, yres;
+            gimp_image_get_resolution(out->image, &xres, &yres);
+            size = size * yres / 72.0;
+        }
+        pango_font_description_free(desc);
+        if (size <= 0) size = 16;
+
+        gimp_text_get_extents_font(settings->text, size, font,
+            &wmwidth, &wmheight, &wmasc, &wmdesc);
+
         calc_watermark_xy (
             imgwidth, imgheight,
-            wmwidth, wmheight, 
-            settings->position, 
-            settings->edge_distance, 
+            wmwidth, wmheight,
+            settings->position,
+            settings->edge_distance,
             &posX, &posY);
-        
-        layerId = gimp_text_fontname(
-            out->image_id,
-            -1,
+
+        GeglColor *color = rgba_to_gegl(&(settings->color));
+        gimp_context_push();
+        gimp_context_set_foreground(color);
+        layer = gimp_text_font(
+            out->image,
+            NULL,
             posX,
             posY,
             settings->text,
             -1,
             TRUE,
-            pango_font_description_get_size(settings->font) / PANGO_SCALE,
-            GIMP_PIXELS,
-            pango_font_description_get_family(settings->font)
+            size,
+            font
         );
-        gimp_context_set_foreground(&old_foreground);
-        gimp_layer_set_opacity(layerId, settings->opacity);
+        gimp_context_pop();
+        g_object_unref(color);
+
+        if (layer == NULL) return FALSE;
+        gimp_layer_set_opacity(layer, settings->opacity);
     }
     else {
-        if (!g_file_test(settings->image_file, G_FILE_TEST_IS_REGULAR)) {
+        if (settings->image_file == NULL || !g_file_test(settings->image_file, G_FILE_TEST_IS_REGULAR)) {
             // error, can't access image file
             return TRUE;
         }
-        
-        layerId = gimp_file_load_layer(
-            GIMP_RUN_NONINTERACTIVE,
-            out->image_id,
-            settings->image_file
-        );
-        
-        gimp_image_insert_layer(
-            out->image_id,
-            layerId,
-            0,
-            0
-        );
-        
-        wmwidth = gimp_drawable_width(layerId);
-        wmheight = gimp_drawable_height(layerId);
+
+        GFile *file = g_file_new_for_path(settings->image_file);
+        layer = gimp_file_load_layer(GIMP_RUN_NONINTERACTIVE, out->image, file);
+        g_object_unref(file);
+        if (layer == NULL) return FALSE;
+
+        gimp_image_insert_layer(out->image, layer, NULL, 0);
+
+        wmwidth = gimp_drawable_get_width(GIMP_DRAWABLE(layer));
+        wmheight = gimp_drawable_get_height(GIMP_DRAWABLE(layer));
         if (settings->image_sizemode != WM_IMG_NOSIZE) {
             if (settings->image_sizemode == WM_IMG_SIZEW) {
                 float wmwidth_ = (imgwidth * settings->image_size_percent) / 100.0;
@@ -864,40 +914,28 @@ static gboolean apply_watermark(watermark_settings settings, image_output out)
                 wmwidth = round((wmwidth * diff) / 100.0);
                 wmheight = round(wmheight_);
             }
-            
-            GimpInterpolationType old_interpolation;
-            old_interpolation = gimp_context_get_interpolation();
-            
-            success = gimp_context_set_interpolation (GIMP_INTERPOLATION_CUBIC);
-            success = gimp_layer_scale (
-                layerId, 
-                wmwidth, 
-                wmheight,
-                TRUE
-            );
-            success = gimp_context_set_interpolation (old_interpolation);
+
+            gimp_context_push();
+            gimp_context_set_interpolation (GIMP_INTERPOLATION_CUBIC);
+            success = gimp_layer_scale (layer, wmwidth, wmheight, TRUE);
+            gimp_context_pop();
         }
-        
-        gimp_layer_set_opacity(layerId, settings->opacity);
-                
+
+        gimp_layer_set_opacity(layer, settings->opacity);
+
         calc_watermark_xy (
-            imgwidth, imgheight, 
-            wmwidth, wmheight, 
-            settings->position, 
-            settings->edge_distance, 
+            imgwidth, imgheight,
+            wmwidth, wmheight,
+            settings->position,
+            settings->edge_distance,
             &posX, &posY);
-        
-        gimp_layer_set_offsets(
-            layerId,
-            posX,
-            posY
-        );   
+
+        gimp_layer_set_offsets(layer, posX, posY);
     }
-    
+
     // refresh all drawables
-    g_free(out->drawable_ids);
-    out->drawable_ids = gimp_image_get_layers(out->image_id, &out->drawable_count);
-    
+    refresh_drawables(out);
+
     return success;
 }
 
@@ -940,506 +978,385 @@ static void calc_watermark_xy (int imgwidth, int imgheight, int wmwidth, int wmh
     }
 }
 
-static gboolean apply_userdef(userdef_settings settings, image_output out) 
+/* Creates the config of a user-defined procedure with the user's settings.
+ * Returns NULL if the procedure does not exist. */
+GimpProcedureConfig* bimp_userdef_create_config(userdef_settings settings, GimpProcedure** procedure)
 {
-    gboolean success = TRUE;
-    
-    int param_i;
-    GimpParamDef param_info;
-    gboolean saving_function = (strstr(settings->procedure, "-save") != NULL);
-    
-    int single_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-	gimp_selection_none(out->image_id);
-    
-    for (param_i = 0; param_i < settings->num_params; param_i++) {
-        switch((settings->params[param_i]).type) {
-            case GIMP_PDB_IMAGE: 
-                (settings->params[param_i]).data.d_image = out->image_id;
-                break;
-            
-            case GIMP_PDB_DRAWABLE:
-            case GIMP_PDB_ITEM:
-                (settings->params[param_i]).data.d_drawable = single_drawable;
-                break;
-                
-            case GIMP_PDB_STRING:
-                if (saving_function) {
-                    param_info = pdb_proc_get_param_info(settings->procedure, param_i);
-                    if (strcmp(param_info.name, "filename") == 0) {
-                        (settings->params[param_i]).data.d_string = g_strdup(out->filepath);
-                    }
-                    else if (strcmp(param_info.name, "raw-filename") == 0) {
-                        (settings->params[param_i]).data.d_string = g_strdup(out->filename);
-                    }
-                }
-                break;
-            
-            default: break;
+    GimpProcedure *proc = gimp_pdb_lookup_procedure(gimp_get_pdb(), settings->procedure);
+    GimpProcedureConfig *config;
+
+    if (proc == NULL) return NULL;
+    if (procedure) *procedure = proc;
+
+    config = gimp_procedure_create_config(proc);
+    if (settings->config != NULL) {
+        GError *error = NULL;
+        if (!gimp_config_deserialize_string(GIMP_CONFIG(config), settings->config, -1, NULL, &error)) {
+            g_printerr("BIMP: settings of %s: %s\n", settings->procedure, error ? error->message : "?");
+            g_clear_error(&error);
         }
     }
-    
-    gint nreturn_vals;
-    GimpParam *return_vals = gimp_run_procedure2(
-        settings->procedure,
-        &nreturn_vals,
-        settings->num_params,
-        settings->params
-    );
-    
-    gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    g_free(out->drawable_ids);
-    out->drawable_ids = gimp_image_get_layers(out->image_id, &out->drawable_count);
-    
+
+    return config;
+}
+
+/* Fills in the arguments that come from the batch: the run mode, the image
+ * and its (merged) drawable. */
+void bimp_userdef_set_image(GimpProcedure* proc, GimpProcedureConfig* config, GimpImage* image, GimpDrawable* drawable)
+{
+    GParamSpec **specs;
+    gint n_specs, i;
+
+    specs = gimp_procedure_get_arguments(proc, &n_specs);
+    for (i = 0; i < n_specs; i++) {
+        const gchar *name = g_param_spec_get_name(specs[i]);
+        GType type = G_PARAM_SPEC_VALUE_TYPE(specs[i]);
+
+        if (type == GIMP_TYPE_RUN_MODE) {
+            g_object_set(config, name, GIMP_RUN_NONINTERACTIVE, NULL);
+        }
+        else if (type == GIMP_TYPE_IMAGE) {
+            g_object_set(config, name, image, NULL);
+        }
+        else if (g_type_is_a(type, GIMP_TYPE_ITEM)) {
+            g_object_set(config, name, drawable, NULL);
+        }
+        else if (type == GIMP_TYPE_CORE_OBJECT_ARRAY) {
+            GimpDrawable *drawables[2] = { drawable, NULL };
+            g_object_set(config, name, drawable ? drawables : NULL, NULL);
+        }
+    }
+}
+
+static gboolean apply_userdef(userdef_settings settings, image_output out)
+{
+    gboolean success = TRUE;
+    GimpProcedure *proc = NULL;
+    GimpProcedureConfig *config = bimp_userdef_create_config(settings, &proc);
+
+    if (config == NULL) {
+        g_printerr("BIMP: GIMP has no procedure %s\n", settings->procedure);
+        return FALSE;
+    }
+
+    GimpLayer *single_drawable = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    gimp_selection_none(out->image);
+
+    bimp_userdef_set_image(proc, config, out->image, GIMP_DRAWABLE(single_drawable));
+
+    GimpValueArray *return_vals = gimp_procedure_run_config(proc, config);
+    if (return_vals == NULL || GIMP_VALUES_GET_ENUM(return_vals, 0) != GIMP_PDB_SUCCESS) {
+        g_printerr("BIMP: %s failed\n", settings->procedure);
+        success = FALSE;
+    }
+    if (return_vals) gimp_value_array_unref(return_vals);
+    g_object_unref(config);
+
+    gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    refresh_drawables(out);
+
     return success;
 }
 
-static gboolean apply_rename(rename_settings settings, image_output out, char* orig_basename) 
+static gboolean apply_rename(rename_settings settings, image_output out, char* orig_basename)
 {
-    char *orig_name = g_strdup(orig_basename);
-    
-    out->filename = g_strdup(settings->pattern);
-    
-    // search for 'RENAME_KEY_ORIG' occurrences and replace the final filename 
-    if(strstr(out->filename, RENAME_KEY_ORIG) != NULL) {
-        out->filename = str_replace(out->filename, RENAME_KEY_ORIG, orig_name);
+    gchar *name = g_strdup(settings->pattern), *replaced;
+
+    // search for 'RENAME_KEY_ORIG' occurrences and replace the final filename
+    if(strstr(name, RENAME_KEY_ORIG) != NULL) {
+        replaced = str_replace(name, RENAME_KEY_ORIG, orig_basename);
+        g_free(name);
+        name = replaced;
     }
-    
-    // same thing for count and datetime 
-    
-    if(strstr(out->filename, RENAME_KEY_COUNT) != NULL)    {
-        char strcount[5];
-        sprintf(strcount, "%i", processed_count + 1);
-        out->filename = str_replace(out->filename, RENAME_KEY_COUNT, strcount);
+
+    // same thing for count and datetime
+
+    if(strstr(name, RENAME_KEY_COUNT) != NULL)    {
+        char strcount[16];
+        g_snprintf(strcount, sizeof(strcount), "%i", processed_count + 1);
+        replaced = str_replace(name, RENAME_KEY_COUNT, strcount);
+        g_free(name);
+        name = replaced;
     }
-    
-    if(strstr(out->filename, RENAME_KEY_DATETIME) != NULL)    {
-        out->filename = str_replace(out->filename, RENAME_KEY_DATETIME, current_datetime);
+
+    if(strstr(name, RENAME_KEY_DATETIME) != NULL)    {
+        replaced = str_replace(name, RENAME_KEY_DATETIME, current_datetime);
+        g_free(name);
+        name = replaced;
     }
-    
-    g_free(orig_name);
-    
+
+    out->filename = name;
+
     return TRUE;
 }
 
-// following: set of functions that saves the image file in various formats 
+// following: saving the image file in various formats
 
-static gboolean image_save(format_type type, image_output imageout, format_params params) 
+/* Sets a property of an export config if this GIMP has it: argument names
+ * differ between exporters and GIMP versions, and a missing one must not
+ * stop the export. */
+static void cfg_set(GimpProcedureConfig *config, const gchar *name, ...)
 {
-    gboolean result;
-    
+    GParamSpec *spec = g_object_class_find_property(G_OBJECT_GET_CLASS(config), name);
+    va_list args;
+
+    if (spec == NULL) {
+        g_print("BIMP: this GIMP's exporter has no \"%s\" setting, skipped\n", name);
+        return;
+    }
+
+    va_start(args, name);
+    g_object_set_valist(G_OBJECT(config), name, args);
+    va_end(args);
+}
+
+static GimpProcedureConfig* export_config(const gchar *proc_name, GimpProcedure **proc, image_output out)
+{
+    GimpProcedureConfig *config;
+    GFile *file;
+
+    *proc = gimp_pdb_lookup_procedure(gimp_get_pdb(), proc_name);
+    if (*proc == NULL) {
+        g_printerr("BIMP: this GIMP has no %s\n", proc_name);
+        return NULL;
+    }
+
+    file = g_file_new_for_path(out->filepath);
+    config = gimp_procedure_create_config(*proc);
+    g_object_set(config,
+        "run-mode", GIMP_RUN_NONINTERACTIVE,
+        "image", out->image,
+        "file", file,
+        NULL);
+    g_object_unref(file);
+
+    return config;
+}
+
+static gboolean export_run(GimpProcedure *proc, GimpProcedureConfig *config)
+{
+    GimpValueArray *return_vals = gimp_procedure_run_config(proc, config);
+    gboolean success = return_vals != NULL && GIMP_VALUES_GET_ENUM(return_vals, 0) == GIMP_PDB_SUCCESS;
+
+    if (!success && return_vals != NULL && gimp_value_array_length(return_vals) > 1 &&
+        G_VALUE_HOLDS_STRING(gimp_value_array_index(return_vals, 1))) {
+        g_printerr("BIMP: %s\n", GIMP_VALUES_GET_STRING(return_vals, 1));
+    }
+    if (return_vals) gimp_value_array_unref(return_vals);
+    g_object_unref(config);
+
+    return success;
+}
+
+/* GIMP 2 numbered choices; GIMP 3 names them */
+static const gchar* jpeg_subsampling_name(int subsampling)
+{
+    switch (subsampling) {
+        case 0: return "sub-sampling-2x2";  /* 4:2:0 */
+        case 1: return "sub-sampling-2x1";  /* 4:2:2 horizontal */
+        case 3: return "sub-sampling-1x2";  /* 4:2:2 vertical */
+        default: return "sub-sampling-1x1"; /* 4:4:4 */
+    }
+}
+
+static const gchar* jpeg_dct_name(int dct)
+{
+    switch (dct) {
+        case 1: return "fixed";
+        case 2: return "float";
+        default: return "integer";
+    }
+}
+
+static const gchar* tiff_compression_name(int compression)
+{
+    static const gchar *names[] = { "none", "lzw", "packbits", "adobe_deflate", "jpeg" };
+    return (compression >= 0 && compression < G_N_ELEMENTS(names)) ? names[compression] : "none";
+}
+
+static const gchar* webp_preset_name(int preset)
+{
+    static const gchar *names[] = { "default", "picture", "photo", "drawing", "icon", "text" };
+    return (preset >= 0 && preset < G_N_ELEMENTS(names)) ? names[preset] : "default";
+}
+
+static void convert_to_indexed(image_output out)
+{
+    GimpLayer *layer = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+
+    if (!gimp_drawable_is_indexed(GIMP_DRAWABLE(layer))) {
+        gimp_image_convert_indexed(
+            out->image,
+            GIMP_CONVERT_DITHER_FS,
+            GIMP_CONVERT_PALETTE_GENERATE,
+            gimp_drawable_has_alpha(GIMP_DRAWABLE(layer)) ? 255 : 256,
+            TRUE,
+            FALSE,
+            NULL
+        );
+    }
+}
+
+static gboolean save_webp(image_output out, format_params_webp p)
+{
+    GimpProcedure *proc;
+    GimpProcedureConfig *config = export_config("file-webp-export", &proc, out);
+    if (config == NULL) return FALSE;
+
+    cfg_set(config, "preset", webp_preset_name(p->preset), NULL);
+    cfg_set(config, "lossless", p->lossless, NULL);
+    cfg_set(config, "quality", (gdouble)p->quality, NULL);
+    cfg_set(config, "alpha-quality", (gdouble)p->alpha_quality, NULL);
+    cfg_set(config, "animation", p->animation, NULL);
+    cfg_set(config, "animation-loop", p->anim_loop, NULL);
+    cfg_set(config, "minimize-size", p->minimize_size, NULL);
+    cfg_set(config, "keyframe-distance", p->kf_distance, NULL);
+    cfg_set(config, "include-exif", p->exif, NULL);
+    cfg_set(config, "include-iptc", p->iptc, NULL);
+    cfg_set(config, "include-xmp", p->xmp, NULL);
+    cfg_set(config, "default-delay", p->delay, NULL);
+    cfg_set(config, "force-delay", (gboolean)p->force_delay, NULL);
+
+    return export_run(proc, config);
+}
+
+static gboolean save_heif(image_output out, const gchar *proc_name, int quality, gboolean lossless)
+{
+    GimpProcedure *proc;
+    GimpProcedureConfig *config = export_config(proc_name, &proc, out);
+    if (config == NULL) return FALSE;
+
+    cfg_set(config, "quality", quality, NULL);
+    cfg_set(config, "lossless", lossless, NULL);
+
+    return export_run(proc, config);
+}
+
+static gboolean image_save(format_type type, image_output out, format_params params)
+{
+    GimpProcedure *proc = NULL;
+    GimpProcedureConfig *config = NULL;
+
+    gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+
     if (type == FORMAT_BMP) {
-        result = image_save_bmp(imageout);
+        config = export_config("file-bmp-export", &proc, out);
     }
     else if(type == FORMAT_GIF) {
-        result = image_save_gif(imageout, ((format_params_gif)params)->interlace);
+        convert_to_indexed(out);
+        config = export_config("file-gif-export", &proc, out);
+        if (config) {
+            cfg_set(config, "interlace", ((format_params_gif)params)->interlace, NULL);
+            cfg_set(config, "loop", TRUE, NULL);
+        }
     }
     else if(type == FORMAT_ICON) {
-        result = image_save_icon(imageout);
+        config = export_config("file-ico-export", &proc, out);
     }
     else if(type == FORMAT_JPEG) {
-        result = image_save_jpeg(
-            imageout, 
-            ((format_params_jpeg)params)->quality, 
-            ((format_params_jpeg)params)->smoothing, 
-            ((format_params_jpeg)params)->entropy, 
-            ((format_params_jpeg)params)->progressive,
-            ((format_params_jpeg)params)->comment,
-            ((format_params_jpeg)params)->subsampling,
-            ((format_params_jpeg)params)->baseline,
-            ((format_params_jpeg)params)->markers,
-            ((format_params_jpeg)params)->dct
-        );
+        format_params_jpeg p = params;
+        GimpLayer *layer = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+
+        // the JPEG exporter does not take indexed images
+        if (gimp_drawable_is_indexed(GIMP_DRAWABLE(layer))) {
+            gimp_image_convert_rgb(out->image);
+        }
+        if (p->comment != NULL && strlen(p->comment) > 0) {
+            GimpParasite *parasite = gimp_parasite_new("gimp-comment", GIMP_PARASITE_PERSISTENT,
+                                                       strlen(p->comment) + 1, p->comment);
+            gimp_image_attach_parasite(out->image, parasite);
+            gimp_parasite_free(parasite);
+        }
+
+        config = export_config("file-jpeg-export", &proc, out);
+        if (config) {
+            // quality below 3 does not change the file any further
+            cfg_set(config, "quality", p->quality >= 3 ? p->quality / 100.0 : 0.03, NULL);
+            cfg_set(config, "smoothing", (gdouble)p->smoothing, NULL);
+            cfg_set(config, "optimize", p->entropy, NULL);
+            cfg_set(config, "progressive", p->progressive, NULL);
+            cfg_set(config, "sub-sampling", jpeg_subsampling_name(p->subsampling), NULL);
+            cfg_set(config, "baseline", p->baseline, NULL);
+            cfg_set(config, "restart", p->markers, NULL);
+            cfg_set(config, "dct", jpeg_dct_name(p->dct), NULL);
+            cfg_set(config, "include-comment", p->comment != NULL && strlen(p->comment) > 0, NULL);
+        }
     }
     else if(type == FORMAT_PNG) {
-        result = image_save_png(imageout, 
-            ((format_params_png)params)->interlace, 
-            ((format_params_png)params)->compression,
-            ((format_params_png)params)->savebgc,
-            ((format_params_png)params)->savegamma,
-            ((format_params_png)params)->saveoff,
-            ((format_params_png)params)->savephys,
-            ((format_params_png)params)->savetime,
-            ((format_params_png)params)->savecomm,
-            ((format_params_png)params)->savetrans
-        );
+        format_params_png p = params;
+        config = export_config("file-png-export", &proc, out);
+        if (config) {
+            cfg_set(config, "interlaced", p->interlace, NULL);
+            cfg_set(config, "compression", p->compression, NULL);
+            cfg_set(config, "bkgd", p->savebgc, NULL);
+            cfg_set(config, "offs", p->saveoff, NULL);
+            cfg_set(config, "phys", p->savephys, NULL);
+            cfg_set(config, "time", p->savetime, NULL);
+            cfg_set(config, "include-comment", p->savecomm, NULL);
+            cfg_set(config, "save-transparent", p->savetrans, NULL);
+            /* GIMP 3 has no gAMA option: it writes a color profile instead */
+        }
     }
     else if(type == FORMAT_TGA) {
-        result = image_save_tga(imageout, ((format_params_tga)params)->rle, ((format_params_tga)params)->origin);
+        config = export_config("file-tga-export", &proc, out);
+        if (config) {
+            cfg_set(config, "rle", ((format_params_tga)params)->rle, NULL);
+            cfg_set(config, "origin", ((format_params_tga)params)->origin == 1 ? "top-left" : "bottom-left", NULL);
+        }
     }
     else if(type == FORMAT_TIFF) {
-        result = image_save_tiff(imageout, ((format_params_tiff)params)->compression);
+        config = export_config("file-tiff-export", &proc, out);
+        if (config) {
+            cfg_set(config, "compression", tiff_compression_name(((format_params_tiff)params)->compression), NULL);
+        }
     }
     else if(type == FORMAT_HEIF) {
-        result = image_save_heif(
-            imageout, 
-            ((format_params_heif)params)->quality,
-            ((format_params_heif)params)->lossless
-        );
+        return save_heif(out, "file-heif-export", ((format_params_heif)params)->quality, ((format_params_heif)params)->lossless);
     }
     else if(type == FORMAT_WEBP) {
-        result = image_save_webp(
-            imageout, 
-            ((format_params_webp)params)->preset,
-            ((format_params_webp)params)->lossless,
-            ((format_params_webp)params)->quality,
-            ((format_params_webp)params)->alpha_quality,
-            ((format_params_webp)params)->animation,
-            ((format_params_webp)params)->anim_loop,
-            ((format_params_webp)params)->minimize_size,
-            ((format_params_webp)params)->kf_distance,
-            ((format_params_webp)params)->exif,
-            ((format_params_webp)params)->iptc,
-            ((format_params_webp)params)->xmp,
-            ((format_params_webp)params)->delay,
-            ((format_params_webp)params)->force_delay
-        );
+        return save_webp(out, (format_params_webp)params);
     }
     else if(type == FORMAT_AVIF) {
-        result = image_save_avif(
-            imageout,
-            ((format_params_avif)params)->lossless,
-            ((format_params_avif)params)->quality
-        );
+        return save_heif(out, "file-heif-av1-export", ((format_params_avif)params)->quality, ((format_params_avif)params)->lossless);
     }
     else if(type == FORMAT_EXR) {
-        result = image_save_exr(imageout);
+        config = export_config("file-exr-export", &proc, out);
     }
     else {
         // save in the original format
-        int final_drawable = gimp_image_merge_visible_layers(imageout->image_id, GIMP_CLIP_TO_IMAGE);
         // but first check if the images was a GIF and it's palette has changed during the process
-        if (file_has_extension(imageout->filename, ".gif") && gimp_drawable_is_rgb(final_drawable)) {
-            gimp_image_convert_indexed(
-                imageout->image_id,
-                GIMP_CONVERT_DITHER_FS,
-                GIMP_CONVERT_PALETTE_GENERATE,
-                gimp_drawable_has_alpha (final_drawable) ? 255 : 256,
-                TRUE,
-                FALSE,
-                ""
-            );
+        if (file_has_extension(out->filename, ".gif")) {
+            convert_to_indexed(out);
         }
-        
+
         // for HEIF, the default values are "0 quality"... save lossless instead
-        if ((file_has_extension(imageout->filename, ".heif") || file_has_extension(imageout->filename, ".heic"))) {
-            result = image_save_heif(
-                imageout, 
-                100,
-                TRUE
-            );
+        if ((file_has_extension(out->filename, ".heif") || file_has_extension(out->filename, ".heic"))) {
+            return save_heif(out, "file-heif-export", 100, TRUE);
         }
-        // same thing for WEBP
-        else if (file_has_extension(imageout->filename, ".webp")) {
-            result = image_save_webp(
-                imageout, 
-                0,
-                FALSE,
-                90,
-                100,
-                FALSE,
-                TRUE,
-                TRUE,
-                50,
-                TRUE,
-                TRUE,
-                TRUE,
-                200,
-                FALSE
-            );
-        }
-        else
-        {
-            result = gimp_file_save(
-                GIMP_RUN_NONINTERACTIVE, 
-                imageout->image_id, 
-                final_drawable, 
-                imageout->filepath, 
-                imageout->filename
-            );
+        else {
+            GFile *file = g_file_new_for_path(out->filepath);
+            gboolean result = gimp_file_save(GIMP_RUN_NONINTERACTIVE, out->image, file, NULL);
+            g_object_unref(file);
+            return result;
         }
     }
-    
-    return result;
-}
 
-static gboolean image_save_bmp(image_output out) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_bmp_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_END
-    );
-    
-    return TRUE;
-}
+    if (config == NULL) return FALSE;
 
-static gboolean image_save_gif(image_output out, gboolean interlace) 
-{
-    gint nreturn_vals;
-    
-    // first, convert to indexed-256 color mode 
-    gimp_image_convert_indexed(
-        out->image_id,
-        GIMP_CONVERT_DITHER_FS,
-        GIMP_CONVERT_PALETTE_GENERATE,
-        gimp_drawable_has_alpha (out->drawable_ids[0]) ? 255 : 256,
-        TRUE,
-        FALSE,
-        ""
-    );
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_gif_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, 0, // drawable is ignored
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, interlace ? 1 : 0,    // Try to save as interlaced 
-        GIMP_PDB_INT32, 1,                    // (animated gif) loop infinitely 
-        GIMP_PDB_INT32, 0,                    // (animated gif) Default delay between framese in milliseconds 
-        GIMP_PDB_INT32, 0,                    // (animated gif) Default disposal type (0=don't care, 1=combine, 2=replace) 
-        GIMP_PDB_END
-    );
-        
-    return TRUE;
-}
-
-static gboolean image_save_icon(image_output out) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_ico_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_END
-    );
-        
-    return TRUE;
-}
-
-static gboolean image_save_jpeg(image_output out, float quality, float smoothing, gboolean entropy, gboolean progressive, gchar* comment, int subsampling, gboolean baseline, int markers, int dct) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    // "file_jpeg_save" doesn't support indexed images
-    if (gimp_drawable_is_indexed(final_drawable)) {
-        gimp_image_convert_rgb(out->image_id);
-    }
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_jpeg_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_FLOAT, quality >= 3 ? quality/100 : 0.03,    // Quality of saved image (0 <= quality <= 1) + small fix because final image doesn't change when quality < 3 
-        GIMP_PDB_FLOAT, smoothing,                // Smoothing factor for saved image (0 <= smoothing <= 1) 
-        GIMP_PDB_INT32, entropy ? 1 : 0,        // Optimization of entropy encoding parameters (0/1) 
-        GIMP_PDB_INT32, progressive ? 1 : 0,    // Enable progressive jpeg image loading - ignored if not compiled with HAVE_PROGRESSIVE_JPEG (0/1) 
-        GIMP_PDB_STRING, comment,                // Image comment 
-        GIMP_PDB_INT32, subsampling,            // The subsampling option number 
-        GIMP_PDB_INT32, baseline ? 1 : 0,        // Force creation of a baseline JPEG (non-baseline JPEGs can't be read by all decoders) (0/1) 
-        GIMP_PDB_INT32, markers,                // Frequency of restart markers (in rows, 0 = no restart markers) 
-        GIMP_PDB_INT32, dct,                    // DCT algorithm to use (speed/quality tradeoff) 
-        GIMP_PDB_END
-    );
-    
-    return TRUE;
-}
-
-static gboolean image_save_heif(image_output out, int quality, gboolean lossless) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-        
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_heif_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, quality,            // Quality factor (range: 0-100. 0 = worst, 100 = best)
-        GIMP_PDB_INT32, lossless ? 1 : 0,   // Use lossless compression (0 = lossy, 1 = lossless)
-        GIMP_PDB_END
-    );
-    
-    return TRUE;
-}
-
-static gboolean image_save_png(image_output out, gboolean interlace, int compression, gboolean savebgc, gboolean savegamma, gboolean saveoff, gboolean savephys, gboolean savetime, gboolean savecomm, gboolean savetrans) 
-{    
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_png_save2",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, interlace? 1 : 0,    // Use Adam7 interlacing? 
-        GIMP_PDB_INT32, compression,        // Deflate Compression factor (0-9) 
-        GIMP_PDB_INT32, savebgc? 1 : 0,        // Write bKGD chunk? 
-        GIMP_PDB_INT32, savegamma? 1 : 0,    // Write gAMA chunk? 
-        GIMP_PDB_INT32, saveoff? 1 : 0,        // Write oFFs chunk? 
-        GIMP_PDB_INT32, savephys? 1 : 0,    // Write phys chunk? 
-        GIMP_PDB_INT32, savetime? 1 : 0,    // Write tIME chunk? 
-        GIMP_PDB_INT32, savecomm? 1 : 0,    // Write comments chunk? 
-        GIMP_PDB_INT32, savetrans? 1 : 0,    // Write trans chunk? 
-        GIMP_PDB_END
-    );
-        
-    return TRUE;
-}
-
-static gboolean image_save_tga(image_output out, gboolean rle, int origin) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_tga_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, rle? 1 : 0,    // Use RLE compression 
-        GIMP_PDB_INT32, origin,        // Image origin 
-        GIMP_PDB_END
-    );
-        
-    return TRUE;
-}
-
-static gboolean image_save_tiff(image_output out, int compression) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_tiff_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, compression,    // Compression type: { NONE (0), LZW (1), PACKBITS (2), DEFLATE (3), JPEG (4) } 
-        GIMP_PDB_END
-    );
-        
-    return TRUE;
-}
-
-static gboolean image_save_webp(image_output out, int preset, gboolean lossless, float quality, float alpha_quality, gboolean animation, gboolean anim_loop, gboolean minimize_size, int kf_distance, gboolean exif, gboolean iptc, gboolean xmp, int delay, int force_delay)
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-        
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_webp_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, preset,            // preset (Default=0, Picture=1, Photo=2, Drawing=3, Icon=4, Text=5)
-        GIMP_PDB_INT32, lossless,          // Use lossless encoding (0/1)
-        GIMP_PDB_FLOAT, quality,           // Quality of the image (0 <= quality <= 100)
-        GIMP_PDB_FLOAT, alpha_quality,     // Quality of the image's alpha channel (0 <= alpha-quality <= 100)
-        GIMP_PDB_INT32, animation,         // Use layers for animation (0/1)
-        GIMP_PDB_INT32, anim_loop,         // Loop animation infinitely (0/1)
-        GIMP_PDB_INT32, minimize_size,     // Minimize animation size (0/1)
-        GIMP_PDB_INT32, kf_distance,       // Maximum distance between key-frames (>=0)
-        GIMP_PDB_INT32, exif,              // Toggle saving exif data (0/1)
-        GIMP_PDB_INT32, iptc,              // Toggle saving iptc data (0/1)
-        GIMP_PDB_INT32, xmp,               // Toggle saving xmp data (0/1)
-        GIMP_PDB_INT32, delay,             // Delay to use when timestamps are not available or forced
-        GIMP_PDB_INT32, force_delay,       // Force delay on all frames
-        GIMP_PDB_END
-    );
-    
-    return TRUE;
-}
-
-static gboolean image_save_avif(image_output out, gboolean lossless, int quality) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_heif_av1_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_INT32, quality,           // Quality of the image (0 <= quality <= 100)
-        GIMP_PDB_INT32, lossless,          // Use lossless encoding (0/1)
-        GIMP_PDB_END
-    );
-}
-
-static gboolean image_save_exr(image_output out) 
-{
-    gint nreturn_vals;
-    int final_drawable = gimp_image_merge_visible_layers(out->image_id, GIMP_CLIP_TO_IMAGE);
-    
-    GimpParam *return_vals = gimp_run_procedure(
-        "file_exr_save",
-        &nreturn_vals,
-        GIMP_PDB_INT32, GIMP_RUN_NONINTERACTIVE,
-        GIMP_PDB_IMAGE, out->image_id,
-        GIMP_PDB_DRAWABLE, final_drawable,
-        GIMP_PDB_STRING, out->filepath,
-        GIMP_PDB_STRING, out->filename,
-        GIMP_PDB_END
-    );
-    
-    return TRUE;
+    return export_run(proc, config);
 }
 
 /* returns a result code following this schema:
  * 0 = user responses "don't overwrite" to a confirm dialog
  * 1 = old file was the same as the new one and user responses "yes, overwrite"
- * 2 = old file wasn't the same (implicit overwrite) */ 
+ * 2 = old file wasn't the same (implicit overwrite) */
 static int overwrite_result(char* path, GtkWidget* parent) {
     gboolean oldfile_access = g_file_test(path, G_FILE_TEST_IS_REGULAR);
-    
-    if ( (bimp_opt_alertoverwrite == BIMP_ASK_OVERWRITE) && oldfile_access) {
+
+    if ( (bimp_opt_alertoverwrite == BIMP_ASK_OVERWRITE) && oldfile_access && bimp_interactive) {
         GtkWidget *dialog;
         GtkWidget *check_alertoverwrite;
-        GtkWidget *dialog_action;
-        
-        
+
         dialog = gtk_message_dialog_new(
             GTK_WINDOW(parent),
             GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -1447,26 +1364,23 @@ static int overwrite_result(char* path, GtkWidget* parent) {
             GTK_BUTTONS_NONE,
             _("File %s already exists, overwrite it?"), comp_get_filename(path)
         );
-        
+
         // Add checkbox "Always apply decision"
-        dialog_action = gtk_dialog_get_action_area(GTK_DIALOG(dialog));
         check_alertoverwrite = gtk_check_button_new_with_label(_("Always apply this decision"));
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check_alertoverwrite), FALSE);
-        gtk_box_pack_start (GTK_BOX(dialog_action), check_alertoverwrite, FALSE, FALSE, 0);
+        gtk_box_pack_start (GTK_BOX(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog))), check_alertoverwrite, FALSE, FALSE, 0);
         gtk_widget_show (check_alertoverwrite);
-        
+
         gtk_dialog_add_buttons (
             GTK_DIALOG(dialog),
-            GTK_STOCK_YES, GTK_RESPONSE_YES,
-
-            GTK_STOCK_NO, GTK_RESPONSE_NO, NULL
+            _("_Yes"), GTK_RESPONSE_YES,
+            _("_No"), GTK_RESPONSE_NO, NULL
         );
-        
+
         gtk_window_set_title(GTK_WINDOW(dialog), _("Overwrite?"));
-        gint result = gtk_dialog_run(GTK_DIALOG(dialog));        
-        gboolean dont_ask_anymore = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check_alertoverwrite));        
+        gint result = gtk_dialog_run(GTK_DIALOG(dialog));
+        gboolean dont_ask_anymore = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check_alertoverwrite));
         gtk_widget_destroy(dialog);
-                
 
         if (result == GTK_RESPONSE_YES) {
             if (dont_ask_anymore)

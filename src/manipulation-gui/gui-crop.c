@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include "../bimp-utils.h"
 #include "gui-crop.h"
 #include "../bimp-manipulations.h"
 #include "../bimp-manipulations-gui.h"
@@ -20,22 +21,22 @@ GtkWidget* bimp_crop_gui_new(crop_settings settings)
     GtkWidget *label_manual_width, *label_manual_height, *label_manual_ratio, *label_startpos;
     GtkWidget *align_radio_stratio, *align_radio_manual;
     
-    gui = gtk_vbox_new(FALSE, 5);
+    gui = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     
-    align_radio_stratio = gtk_alignment_new(0, 0, 0, 0);
-    gtk_alignment_set_padding(GTK_ALIGNMENT(align_radio_stratio), 0, 5, 10, 0);
+    align_radio_stratio = bimp_align_new(0, 0, 0, 0);
+    bimp_align_set_padding(align_radio_stratio, 0, 5, 10, 0);
     
     radio_stratio = gtk_radio_button_new_with_label (NULL, _("Crop to a standard aspect ratio"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio_stratio), (!settings->manual));
     
-    hbox_ratio = gtk_hbox_new(FALSE, 5);
-    combo_ratio = gtk_combo_box_new_text();
+    hbox_ratio = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    combo_ratio = gtk_combo_box_text_new();
     int i;
     for(i = 0; i < CROP_PRESET_END; i++) {
-        gtk_combo_box_append_text(GTK_COMBO_BOX(combo_ratio), crop_preset_get_string(i));
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_ratio), crop_preset_get_string(i));
     }
     
-    hbox_customratio = gtk_hbox_new(FALSE, 5);
+    hbox_customratio = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     spin_ratio1 = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new (settings->custom_ratio1, 0.1, 100.0, 0.1, 1, 0)), 1, 1);
     label_manual_ratio = gtk_label_new(":");
     spin_ratio2 = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new (settings->custom_ratio2, 0.1, 100.0, 0.1, 1, 0)), 1, 1);
@@ -46,30 +47,30 @@ GtkWidget* bimp_crop_gui_new(crop_settings settings)
     
     gtk_combo_box_set_active(GTK_COMBO_BOX(combo_ratio), settings->ratio);
     
-    align_radio_manual = gtk_alignment_new(0, 0, 0, 0);
-    gtk_alignment_set_padding(GTK_ALIGNMENT(align_radio_manual), 0, 5, 10, 0);
+    align_radio_manual = bimp_align_new(0, 0, 0, 0);
+    bimp_align_set_padding(align_radio_manual, 0, 5, 10, 0);
     
     radio_manual = gtk_radio_button_new_with_label_from_widget (GTK_RADIO_BUTTON(radio_stratio), _("Manual crop (pixel values)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio_manual), (settings->manual));
     
-    table_manual = gtk_table_new(2, 2, FALSE);
-    gtk_table_set_row_spacings(GTK_TABLE(table_manual), 5);
-    gtk_table_set_col_spacings(GTK_TABLE(table_manual), 5);
+    table_manual = bimp_grid_new(0, 0);
+    gtk_grid_set_row_spacing(GTK_GRID(table_manual), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(table_manual), 5);
     label_manual_width = gtk_label_new(g_strconcat(_("Width"), ": ", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_manual_width), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_manual_width), 0);
     spin_width = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new (settings->new_w, 1, 40960, 1, 1, 0)), 1, 0);
     label_manual_height = gtk_label_new(g_strconcat(_("Height"), ": ", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_manual_height), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_manual_height), 0);
     spin_height = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new (settings->new_h, 1, 40960, 1, 1, 0)), 1, 0);
     
-    hbox_startpos = gtk_hbox_new(FALSE, 5);
+    hbox_startpos = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     label_startpos = gtk_label_new(g_strconcat(_("Start from"), ":", NULL));
-    combo_startpos = gtk_combo_box_new_text();
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_startpos), _("Center"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_startpos), _("Top-left"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_startpos), _("Top-right"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_startpos), _("Bottom-left"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_startpos), _("Bottom-right"));
+    combo_startpos = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_startpos), _("Center"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_startpos), _("Top-left"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_startpos), _("Top-right"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_startpos), _("Bottom-left"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_startpos), _("Bottom-right"));
     
     int active_index;
     switch(settings->start_pos) {
@@ -91,10 +92,10 @@ GtkWidget* bimp_crop_gui_new(crop_settings settings)
     
     gtk_box_pack_start(GTK_BOX(gui), radio_manual, FALSE, FALSE, 0);
     
-    gtk_table_attach(GTK_TABLE(table_manual), label_manual_width, 0, 1, 0, 1, GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
-    gtk_table_attach_defaults(GTK_TABLE(table_manual), spin_width, 1, 2, 0, 1);
-    gtk_table_attach_defaults(GTK_TABLE(table_manual), label_manual_height, 0, 1, 1, 2);
-    gtk_table_attach_defaults(GTK_TABLE(table_manual), spin_height, 1, 2, 1, 2);
+    bimp_grid_attach(table_manual, label_manual_width, 0, 1, 0, 1, FALSE, TRUE);
+    bimp_grid_attach(table_manual, spin_width, 1, 2, 0, 1, TRUE, TRUE);
+    bimp_grid_attach(table_manual, label_manual_height, 0, 1, 1, 2, TRUE, TRUE);
+    bimp_grid_attach(table_manual, spin_height, 1, 2, 1, 2, TRUE, TRUE);
     gtk_container_add(GTK_CONTAINER(align_radio_manual), table_manual);
     gtk_box_pack_start(GTK_BOX(gui), align_radio_manual, FALSE, FALSE, 0);
     

@@ -1,0 +1,4 @@
+# BIMP 3.0
+# inputs: photo.jpg alpha.png
+[SHARPBLUR]
+amount=10

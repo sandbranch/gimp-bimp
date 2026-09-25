@@ -1,0 +1,10 @@
+# BIMP 3.0
+[RESIZE]
+new_w_px=300
+new_h_px=300
+resize_mode_width=1
+resize_mode_height=1
+stretch_mode=2
+padding_color=#ffff00000000
+padding_color_alpha=65535
+interpolation=2

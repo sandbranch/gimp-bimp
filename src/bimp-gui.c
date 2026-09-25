@@ -82,7 +82,7 @@ void bimp_show_gui()
 {	
     GtkWidget* vbox_main;
     
-    gimp_ui_init (PLUG_IN_BINARY, FALSE);
+    gimp_ui_init (PLUG_IN_BINARY);
     
     bimp_window_main = gimp_dialog_new(
         PLUG_IN_FULLNAME,
@@ -91,10 +91,10 @@ void bimp_show_gui()
         0,
         NULL,
         NULL,
-        GTK_STOCK_ABOUT, GTK_RESPONSE_HELP,
-        GTK_STOCK_CLOSE, GTK_RESPONSE_CLOSE,
-        GTK_STOCK_APPLY, GTK_RESPONSE_APPLY, 
-        GTK_STOCK_STOP, GTK_RESPONSE_CANCEL, NULL
+        _("_About"), GTK_RESPONSE_HELP,
+        _("_Close"), GTK_RESPONSE_CLOSE,
+        _("_Apply"), GTK_RESPONSE_APPLY, 
+        _("_Stop"), GTK_RESPONSE_CANCEL, NULL
     );
     
     gimp_window_set_transient (GTK_WINDOW(bimp_window_main));
@@ -106,7 +106,7 @@ void bimp_show_gui()
     GtkSettings *default_settings = gtk_settings_get_default();
     g_object_set(default_settings, "gtk-button-images", TRUE, NULL);
     
-    vbox_main = gtk_vbox_new(FALSE, 10);
+    vbox_main = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     panel_sequence = sequence_panel_new();
     panel_options = option_panel_new();
     
@@ -118,7 +118,7 @@ void bimp_show_gui()
     gtk_box_pack_start(GTK_BOX(vbox_main), panel_options, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(vbox_main), progressbar_visible, FALSE, FALSE, 0);
 
-    gtk_container_add (GTK_CONTAINER (GTK_DIALOG(bimp_window_main)->vbox), vbox_main);
+    gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area(GTK_DIALOG(bimp_window_main))), vbox_main);
     gtk_widget_show_all(bimp_window_main);
     gtk_widget_hide(button_preview);
     
@@ -166,9 +166,9 @@ static GtkWidget* sequence_panel_new()
     scroll_sequence = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll_sequence), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
     
-    hbox_sequence = gtk_hbox_new(FALSE, 10);
+    hbox_sequence = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(scroll_sequence), hbox_sequence);
+    gtk_container_add(GTK_CONTAINER(scroll_sequence), hbox_sequence);
     gtk_viewport_set_shadow_type(GTK_VIEWPORT(gtk_bin_get_child(GTK_BIN(scroll_sequence))), GTK_SHADOW_NONE);
     gtk_container_add(GTK_CONTAINER(panel), scroll_sequence);
     
@@ -189,9 +189,9 @@ static GtkWidget* option_panel_new()
     GtkWidget *label_chooser;
     
     panel = gtk_frame_new(_("Input files and options"));
-    table = gtk_table_new(2, 3, FALSE);
-    gtk_table_set_row_spacings(GTK_TABLE(table), 5);
-    gtk_table_set_col_spacings(GTK_TABLE(table), 5);
+    table = bimp_grid_new(0, 0);
+    gtk_grid_set_row_spacing(GTK_GRID(table), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(table), 5);
     
     /* Sub-sub-panel for input file listing */
     scroll_input = gtk_scrolled_window_new(NULL, NULL);
@@ -205,11 +205,11 @@ static GtkWidget* option_panel_new()
     button_remove = gtk_button_new_with_label(_("Remove images"));
     
     /* Sub-panel for options */
-    vbox_useroptions = gtk_vbox_new(FALSE, 3);
+    vbox_useroptions = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
     
-    hbox_outfolder = gtk_hbox_new(FALSE, 3);
+    hbox_outfolder = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
     label_chooser = gtk_label_new(g_strconcat(_("Output folder"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_chooser), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_chooser), 0);
     
     bimp_output_folder = get_user_dir();
     
@@ -219,7 +219,7 @@ static GtkWidget* option_panel_new()
     gtk_widget_set_tooltip_text (button_outfolder, bimp_output_folder);
     
     button_samefolder = gtk_button_new();
-    GtkWidget* samefolder_icon = gtk_image_new_from_stock(GTK_STOCK_UNDO, GTK_ICON_SIZE_BUTTON);
+    GtkWidget* samefolder_icon = gtk_image_new_from_icon_name("edit-undo", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_image(GTK_BUTTON(button_samefolder), samefolder_icon);
     gtk_widget_set_tooltip_text (button_samefolder, _("Use the selected file's location as the output"));
     
@@ -260,11 +260,11 @@ static GtkWidget* option_panel_new()
     gtk_box_pack_start(GTK_BOX(vbox_useroptions), check_keepdates, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox_useroptions), button_preview, FALSE, FALSE, 2);
     
-    gtk_table_attach_defaults(GTK_TABLE(table), scroll_input, 0, 2, 0, 1);
-    gtk_table_attach(GTK_TABLE(table), button_add, 0, 1, 1, 2, GTK_FILL | GTK_EXPAND, GTK_FILL, 0, 0);
-    gtk_table_attach(GTK_TABLE(table), button_remove, 1, 2, 1, 2, GTK_FILL | GTK_EXPAND, GTK_FILL, 0, 0);
+    bimp_grid_attach(table, scroll_input, 0, 2, 0, 1, TRUE, TRUE);
+    bimp_grid_attach(table, button_add, 0, 1, 1, 2, TRUE, FALSE);
+    bimp_grid_attach(table, button_remove, 1, 2, 1, 2, TRUE, FALSE);
     
-    gtk_table_attach(GTK_TABLE(table), vbox_useroptions, 2, 3, 0, 2, GTK_FILL, GTK_FILL | GTK_EXPAND, 0, 0);
+    bimp_grid_attach(table, vbox_useroptions, 2, 3, 0, 2, FALSE, TRUE);
     
     gtk_container_add(GTK_CONTAINER(panel), table);
 
@@ -349,24 +349,25 @@ static void add_input_folder_r(char* folder, gboolean with_subdirs)
 
 static void add_opened_files() 
 {
-    gint num_images = 0;
-    int* image_ids = gimp_image_list (&num_images);
+    GimpImage **images = gimp_get_images ();
     int i;
     gboolean missing = FALSE;
-    for (i = 0; i < num_images; i++) {
-        gchar* uri = gimp_image_get_uri(image_ids[i]);
-        if (uri != NULL) {
-            gchar* path = g_filename_from_uri(uri, NULL, NULL);
-            if (path != NULL) add_input_file (path);
+    for (i = 0; images != NULL && images[i] != NULL; i++) {
+        /* the file it was opened from, or its XCF */
+        GFile *file = gimp_image_get_imported_file(images[i]);
+        if (file == NULL) file = gimp_image_get_xcf_file(images[i]);
+        if (file != NULL && g_file_get_path(file) != NULL) {
+            add_input_file (g_file_get_path(file));
         }
         else missing = TRUE;
+        g_clear_object(&file);
     }
     
     if (missing) {
         bimp_show_error_dialog(g_strdup_printf(_("Some images were not imported because they have not been saved on filesystem yet.")), bimp_window_main);
     }
     
-    g_free(image_ids);
+    g_free(images);
 }
 
 static void add_input_folder(char* folder, gpointer with_subdirs) 
@@ -479,21 +480,30 @@ static void show_preview (GtkTreeView *tree_view, gpointer data)
         image_output imageout_orig = (image_output)g_malloc(sizeof(struct imageout_str));
         image_output imageout_final = (image_output)g_malloc(sizeof(struct imageout_str));
         
-        imageout_orig->image_id = gimp_file_load(GIMP_RUN_NONINTERACTIVE, (gchar*)selected_str, (gchar*)selected_str);
-        int imageout_orig_drawable = gimp_image_merge_visible_layers(imageout_orig->image_id, GIMP_CLIP_TO_IMAGE); 
+        GFile *file = g_file_new_for_path(selected_str);
+        imageout_orig->image = gimp_file_load(GIMP_RUN_NONINTERACTIVE, file);
+        g_object_unref(file);
+        memset(imageout_final, 0, sizeof(struct imageout_str));
         
         bimp_init_batch();
-        bimp_apply_drawable_manipulations(imageout_final, (gchar*)selected_str, (gchar*)selected_str);
-        int imageout_final_drawable = gimp_image_merge_visible_layers(imageout_final->image_id, GIMP_CLIP_TO_IMAGE); 
+        if (imageout_orig->image == NULL || !bimp_apply_drawable_manipulations(imageout_final, (gchar*)selected_str, (gchar*)selected_str)) {
+            bimp_show_error_dialog(_("Could not open the selected image"), bimp_window_main);
+            if (imageout_orig->image) gimp_image_delete(imageout_orig->image);
+            g_free(imageout_orig);
+            g_free(imageout_final);
+            return;
+        }
+        GimpLayer *imageout_orig_drawable = gimp_image_merge_visible_layers(imageout_orig->image, GIMP_CLIP_TO_IMAGE); 
+        GimpLayer *imageout_final_drawable = gimp_image_merge_visible_layers(imageout_final->image, GIMP_CLIP_TO_IMAGE); 
         
-        pixbuf_orig = gimp_drawable_get_thumbnail(imageout_orig_drawable, PREVIEW_IMG_W, PREVIEW_IMG_H, GIMP_PIXBUF_KEEP_ALPHA);
-        pixbuf_final = gimp_drawable_get_thumbnail(imageout_final_drawable, PREVIEW_IMG_W, PREVIEW_IMG_H, GIMP_PIXBUF_KEEP_ALPHA);
+        pixbuf_orig = gimp_drawable_get_thumbnail(GIMP_DRAWABLE(imageout_orig_drawable), PREVIEW_IMG_W, PREVIEW_IMG_H, GIMP_PIXBUF_KEEP_ALPHA);
+        pixbuf_final = gimp_drawable_get_thumbnail(GIMP_DRAWABLE(imageout_final_drawable), PREVIEW_IMG_W, PREVIEW_IMG_H, GIMP_PIXBUF_KEEP_ALPHA);
         
         dialog_preview = gtk_dialog_new_with_buttons (
             _("Preview"),
             GTK_WINDOW(bimp_window_main),
             GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-            GTK_STOCK_CLOSE,
+            _("_Close"),
             GTK_RESPONSE_CLOSE, NULL
         );
         //gtk_widget_set_size_request (dialog_preview, PREVIEW_WINDOW_W, PREVIEW_WINDOW_H);
@@ -501,34 +511,34 @@ static void show_preview (GtkTreeView *tree_view, gpointer data)
         gtk_window_set_position(GTK_WINDOW(dialog_preview), GTK_WIN_POS_CENTER);
         gtk_container_set_border_width(GTK_CONTAINER(dialog_preview), 5);
         
-        vbox = gtk_vbox_new(FALSE, 10);
+        vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
         label_descr = gtk_label_new(_("This is how the selected image will look like after the batch process"));
         gtk_label_set_line_wrap (GTK_LABEL(label_descr), TRUE);
         gtk_label_set_justify(GTK_LABEL(label_descr), GTK_JUSTIFY_CENTER);
         
-        align = gtk_alignment_new(0.5, 0.5, 0, 0);
+        align = bimp_align_new(0.5, 0.5, 0, 0);
         
-        hbox = gtk_hbox_new(FALSE, 10);
+        hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
         image_orig = gtk_image_new_from_pixbuf(pixbuf_orig);
-        image_forward = gtk_image_new_from_stock(GTK_STOCK_GO_FORWARD, GTK_ICON_SIZE_BUTTON);
+        image_forward = gtk_image_new_from_icon_name("go-next", GTK_ICON_SIZE_BUTTON);
         image_final = gtk_image_new_from_pixbuf(pixbuf_final);
         
         gtk_box_pack_start(GTK_BOX(hbox), image_orig, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(hbox), image_forward, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(hbox), image_final, FALSE, FALSE, 0);
-        gtk_misc_set_alignment(GTK_MISC(hbox), 0, .5);
         
         gtk_box_pack_start(GTK_BOX(vbox), label_descr, FALSE, FALSE, 7);
         gtk_container_add(GTK_CONTAINER(align), hbox);
         gtk_box_pack_start(GTK_BOX(vbox), align, FALSE, FALSE, 0);
         
-        gtk_container_add (GTK_CONTAINER (GTK_DIALOG(dialog_preview)->vbox), vbox);
+        gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area(GTK_DIALOG(dialog_preview))), vbox);
         gtk_widget_show_all(dialog_preview);
         
         if (gtk_dialog_run (GTK_DIALOG(dialog_preview)) == GTK_RESPONSE_CLOSE) {
             gtk_widget_destroy (dialog_preview);
-            gimp_image_delete(imageout_orig->image_id);
-            gimp_image_delete(imageout_final->image_id);
+            gimp_image_delete(imageout_orig->image);
+            gimp_image_delete(imageout_final->image);
+            g_free(imageout_final->drawables);
             g_free(imageout_orig);
             g_free(imageout_final);
         }
@@ -600,8 +610,8 @@ static void open_file_chooser(GtkWidget *widget, gpointer data)
         _("Select images"), 
         NULL, 
         GTK_FILE_CHOOSER_ACTION_OPEN, 
-        GTK_STOCK_CANCEL, GTK_RESPONSE_CLOSE, 
-        GTK_STOCK_ADD, GTK_RESPONSE_ACCEPT, NULL
+        _("_Cancel"), GTK_RESPONSE_CLOSE, 
+        _("_Add"), GTK_RESPONSE_ACCEPT, NULL
     );
     gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(file_chooser), TRUE);
     gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(file_chooser), last_input_location);
@@ -724,8 +734,8 @@ static void open_folder_chooser(GtkWidget *widget, gpointer data)
         _("Select folders containing images"), 
         NULL, 
         GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, 
-        GTK_STOCK_CANCEL, GTK_RESPONSE_CLOSE, 
-        GTK_STOCK_ADD, GTK_RESPONSE_ACCEPT, NULL
+        _("_Cancel"), GTK_RESPONSE_CLOSE, 
+        _("_Add"), GTK_RESPONSE_ACCEPT, NULL
     );
     gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(folder_chooser), TRUE);
 
@@ -772,8 +782,8 @@ static void open_outputfolder_chooser(GtkWidget *widget, gpointer data)
         _("Select output folder"), 
         NULL, 
         GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, 
-        GTK_STOCK_CANCEL, GTK_RESPONSE_CLOSE, 
-        GTK_STOCK_OK, GTK_RESPONSE_ACCEPT, NULL
+        _("_Cancel"), GTK_RESPONSE_CLOSE, 
+        _("_OK"), GTK_RESPONSE_ACCEPT, NULL
     );
     gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(chooser), FALSE);
     if (selected_source_folder != NULL) gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER(chooser), selected_source_folder);
@@ -875,7 +885,7 @@ static void popmenus_init()
 static void open_manipulation_popupmenu(GtkWidget *widget, gpointer data)
 {
     if (data == NULL) {
-        gtk_menu_popup(GTK_MENU(popmenu_add), NULL, NULL, NULL, NULL, 0, 0);
+        gtk_menu_popup_at_pointer(GTK_MENU(popmenu_add), NULL);
     }
     else {
         const gchar* item_label;
@@ -887,18 +897,18 @@ static void open_manipulation_popupmenu(GtkWidget *widget, gpointer data)
             item_label = bimp_manip_get_string(clicked_man->type);
         }
         gtk_menu_item_set_label(g_list_first(gtk_container_get_children(GTK_CONTAINER(popmenu_edit)))->data, item_label);
-        gtk_menu_popup(GTK_MENU(popmenu_edit), NULL, NULL, NULL, NULL, 0, 0);
+        gtk_menu_popup_at_pointer(GTK_MENU(popmenu_edit), NULL);
     }
 }
 
 static void open_addfiles_popupmenu(GtkWidget *widget, gpointer data)
 {
-    gtk_menu_popup(GTK_MENU(popmenu_addfiles), NULL, NULL, NULL, NULL, 0, 0);
+    gtk_menu_popup_at_pointer(GTK_MENU(popmenu_addfiles), NULL);
 }
 
 static void open_removefiles_popupmenu(GtkWidget *widget, gpointer data)
 {
-    gtk_menu_popup(GTK_MENU(popmenu_removefiles), NULL, NULL, NULL, NULL, 0, 0);
+    gtk_menu_popup_at_pointer(GTK_MENU(popmenu_removefiles), NULL);
 }
 
 static void add_manipulation_from_id(GtkMenuItem *menuitem, gpointer id) 
@@ -945,7 +955,7 @@ void bimp_refresh_sequence_panel()
     /* Rebuild panel */
     g_slist_foreach(bimp_selected_manipulations, (GFunc)add_manipulation_button, NULL);
     
-    button = gtk_button_new_from_stock(GTK_STOCK_ADD);
+    button = gtk_button_new_from_stock(_("_Add"));
     gtk_button_set_image_position(GTK_BUTTON(button), GTK_POS_TOP);
     gtk_widget_set_size_request (button, SEQ_BUTTON_W - 20, SEQ_BUTTON_H);
     gtk_box_pack_start(GTK_BOX(hbox_sequence), button, FALSE, FALSE, 3);
@@ -979,8 +989,8 @@ static void save_set(GtkMenuItem *menuitem, gpointer user_data)
             _("Save this set..."), 
             NULL, 
             GTK_FILE_CHOOSER_ACTION_SAVE, 
-            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, 
-            GTK_STOCK_SAVE, GTK_RESPONSE_ACCEPT, NULL
+            _("_Cancel"), GTK_RESPONSE_CANCEL, 
+            _("_Save"), GTK_RESPONSE_ACCEPT, NULL
         );
         
         GtkFileFilter *filter_bimp = gtk_file_filter_new();
@@ -1034,8 +1044,8 @@ static void load_set(GtkMenuItem *menuitem, gpointer user_data)
             _("Load set..."), 
             NULL, 
             GTK_FILE_CHOOSER_ACTION_OPEN, 
-            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, 
-            GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT, NULL
+            _("_Cancel"), GTK_RESPONSE_CANCEL, 
+            _("_Open"), GTK_RESPONSE_ACCEPT, NULL
         );
         
         GtkFileFilter *filter_bimp = gtk_file_filter_new();
@@ -1122,7 +1132,7 @@ static const gchar* progressbar_init_hidden ()
     vtable.set_text  = progressbar_settext_hidden;
     vtable.set_value = progressbar_setvalue_hidden;
   
-    return gimp_progress_install_vtable (&vtable, NULL);
+    return gimp_progress_install_vtable (&vtable, NULL, NULL);
 }
 static void progressbar_start_hidden (const gchar *message, gboolean cancelable, gpointer user_data) { }
 static void progressbar_end_hidden (gpointer user_data) { }

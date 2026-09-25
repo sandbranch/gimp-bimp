@@ -1,0 +1,4 @@
+# BIMP 3.0
+# inputs: photo.png sub/deep.png
+[FLIPROTATE]
+flip_h=true

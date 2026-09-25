@@ -71,7 +71,8 @@ gboolean bimp_deserialize_from_file(gchar* filename)
 		// read build code
 		int buildnumber = 0;
 		gchar* header = g_key_file_get_comment(input_file, NULL, NULL, NULL);
-		GRegex *regex = g_regex_new ("^BIMP\\s(\\d+)\\.(\\d+)", 0, 0, NULL);
+		/* BIMP writes "#BIMP 2.6"; hand-written sets often have "# BIMP 2.6" */
+		GRegex *regex = g_regex_new ("^\\s*BIMP\\s(\\d+)\\.(\\d+)", 0, 0, NULL);
 		
 		GMatchInfo *match_info;
 		g_regex_match (regex, header, 0, &match_info);
@@ -80,7 +81,7 @@ gboolean bimp_deserialize_from_file(gchar* filename)
 			gchar *major = g_match_info_fetch (match_info, 1);
 			int major_i = g_ascii_strtoll(major, NULL, 10);
 			gchar *minor = g_match_info_fetch (match_info, 2);
-			int minor_i = g_ascii_strtoll(major, NULL, 10);
+			int minor_i = g_ascii_strtoll(minor, NULL, 10);
 			buildnumber = (major_i * 1000) + minor_i;
 			if (buildnumber > 0) break;
 			
@@ -208,12 +209,12 @@ static void write_resize(resize_settings settings, GKeyFile* file)
     g_key_file_set_integer(file, group_name, "resize_mode_width", settings->resize_mode_width);
     g_key_file_set_integer(file, group_name, "resize_mode_height", settings->resize_mode_height);
     g_key_file_set_integer(file, group_name, "stretch_mode", settings->stretch_mode);
-    g_key_file_set_string(file, group_name, "padding_color", gdk_color_to_string(&(settings->padding_color)));
-    g_key_file_set_integer(file, group_name, "padding_color_alpha", settings->padding_color_alpha);
+    g_key_file_set_string(file, group_name, "padding_color", rgba_to_hex16(&(settings->padding_color)));
+    g_key_file_set_integer(file, group_name, "padding_color_alpha", (gint)(settings->padding_color.alpha * G_MAXUINT16 + 0.5));
     g_key_file_set_integer(file, group_name, "interpolation", settings->interpolation);
     g_key_file_set_boolean(file, group_name, "change_res", settings->change_res);
-    g_key_file_set_integer(file, group_name, "new_res_x", settings->new_res_x);
-    g_key_file_set_integer(file, group_name, "new_res_y", settings->new_res_y);
+    g_key_file_set_double(file, group_name, "new_res_x", settings->new_res_x);
+    g_key_file_set_double(file, group_name, "new_res_y", settings->new_res_y);
 }
 
 /* deserializes a string and returns a resize manipulation */
@@ -271,10 +272,10 @@ static manipulation read_resize(GKeyFile* file)
             settings->stretch_mode = g_key_file_get_integer(file, group_name, "stretch_mode", NULL);
         
         if (g_key_file_has_key(file, group_name, "padding_color", NULL)) 
-            gdk_color_parse(g_key_file_get_string(file, group_name, "padding_color", NULL), &(settings->padding_color));
+            gdk_rgba_parse(&(settings->padding_color), g_key_file_get_string(file, group_name, "padding_color", NULL));
         
         if (g_key_file_has_key(file, group_name, "padding_color_alpha", NULL)) 
-            settings->padding_color_alpha = (guint16)g_key_file_get_integer(file, group_name, "padding_color_alpha", NULL);
+            settings->padding_color.alpha = (guint16)g_key_file_get_integer(file, group_name, "padding_color_alpha", NULL) / (gdouble)G_MAXUINT16;
         
         if (g_key_file_has_key(file, group_name, "interpolation", NULL)) 
             settings->interpolation = g_key_file_get_integer(file, group_name, "interpolation", NULL);
@@ -283,10 +284,10 @@ static manipulation read_resize(GKeyFile* file)
             settings->change_res = g_key_file_get_boolean(file, group_name, "change_res", NULL);
             
         if (g_key_file_has_key(file, group_name, "new_res_x", NULL)) 
-            settings->new_res_x = g_key_file_get_integer(file, group_name, "new_res_x", NULL);
+            settings->new_res_x = g_key_file_get_double(file, group_name, "new_res_x", NULL);
             
         if (g_key_file_has_key(file, group_name, "new_res_y", NULL)) 
-            settings->new_res_y = g_key_file_get_integer(file, group_name, "new_res_y", NULL);
+            settings->new_res_y = g_key_file_get_double(file, group_name, "new_res_y", NULL);
     }
     
     return man;
@@ -302,7 +303,7 @@ static void write_crop(crop_settings settings, GKeyFile* file)
     g_key_file_set_integer(file, group_name, "ratio", settings->ratio);
     g_key_file_set_double(file, group_name, "custom_ratio1", settings->custom_ratio1);
     g_key_file_set_double(file, group_name, "custom_ratio2", settings->custom_ratio2);
-    g_key_file_set_double(file, group_name, "start_pos", settings->start_pos);
+    g_key_file_set_integer(file, group_name, "start_pos", settings->start_pos);
 }
 
 static manipulation read_crop(GKeyFile* file) 
@@ -327,10 +328,10 @@ static manipulation read_crop(GKeyFile* file)
             settings->ratio = g_key_file_get_integer(file, group_name, "ratio", NULL);
             
         if (g_key_file_has_key(file, group_name, "custom_ratio1", NULL)) 
-            settings->custom_ratio1 = g_key_file_get_integer(file, group_name, "custom_ratio1", NULL);
+            settings->custom_ratio1 = g_key_file_get_double(file, group_name, "custom_ratio1", NULL);
             
         if (g_key_file_has_key(file, group_name, "custom_ratio2", NULL)) 
-            settings->custom_ratio2 = g_key_file_get_integer(file, group_name, "custom_ratio2", NULL);
+            settings->custom_ratio2 = g_key_file_get_double(file, group_name, "custom_ratio2", NULL);
             
         if (g_key_file_has_key(file, group_name, "start_pos", NULL)) 
             settings->start_pos = g_key_file_get_integer(file, group_name, "start_pos", NULL);
@@ -537,23 +538,23 @@ gboolean parse_curve_file(
             // save in the proper variables
             if (strcmp(channel_name, "value") == 0) {
                 *num_points_v = num_points_temp;
-                *ctr_points_v = g_memdup(ctr_points_temp, num_points_temp * sizeof(gdouble));
+                *ctr_points_v = g_memdup2(ctr_points_temp, num_points_temp * sizeof(gdouble));
             }
             else if (strcmp(channel_name, "red") == 0) {
                 *num_points_r = num_points_temp;
-                *ctr_points_r = g_memdup(ctr_points_temp, num_points_temp * sizeof(gdouble));
+                *ctr_points_r = g_memdup2(ctr_points_temp, num_points_temp * sizeof(gdouble));
             }
             else if (strcmp(channel_name, "green") == 0) {
                 *num_points_g = num_points_temp;
-                *ctr_points_g = g_memdup(ctr_points_temp, num_points_temp * sizeof(gdouble));
+                *ctr_points_g = g_memdup2(ctr_points_temp, num_points_temp * sizeof(gdouble));
             }
             else if (strcmp(channel_name, "blue") == 0) {
                 *num_points_b = num_points_temp;
-                *ctr_points_b = g_memdup(ctr_points_temp, num_points_temp * sizeof(gdouble));
+                *ctr_points_b = g_memdup2(ctr_points_temp, num_points_temp * sizeof(gdouble));
             }
             else if (strcmp(channel_name, "alpha") == 0) {
                 *num_points_a = num_points_temp;
-                *ctr_points_a = g_memdup(ctr_points_temp, num_points_temp * sizeof(gdouble));
+                *ctr_points_a = g_memdup2(ctr_points_temp, num_points_temp * sizeof(gdouble));
             }
             else goto err;
             
@@ -609,8 +610,8 @@ static void write_watermark(watermark_settings settings, GKeyFile* file, int id)
     
     g_key_file_set_boolean(file, group_name, "mode", settings->mode);
     g_key_file_set_string(file, group_name, "text", settings->text);
-    g_key_file_set_string(file, group_name, "font", pango_font_description_to_string(settings->font));
-    g_key_file_set_string(file, group_name, "color", gdk_color_to_string(&(settings->color)));
+    g_key_file_set_string(file, group_name, "font", settings->font);
+    g_key_file_set_string(file, group_name, "color", rgba_to_hex16(&(settings->color)));
     if (settings->image_file != NULL) g_key_file_set_string(file, group_name, "image_file", settings->image_file);
     g_key_file_set_integer(file, group_name, "image_sizemode", settings->image_sizemode);
     g_key_file_set_double(file, group_name, "image_size_percent", settings->image_size_percent);
@@ -637,10 +638,10 @@ static manipulation read_watermark(GKeyFile* file, int id)
             settings->text = g_key_file_get_string(file, group_name, "text", NULL);
             
         if (g_key_file_has_key(file, group_name, "font", NULL)) 
-            settings->font = pango_font_description_from_string(g_key_file_get_string(file, group_name, "font", NULL));
+            settings->font = g_key_file_get_string(file, group_name, "font", NULL);
             
         if (g_key_file_has_key(file, group_name, "color", NULL)) 
-            gdk_color_parse(g_key_file_get_string(file, group_name, "color", NULL), &(settings->color));
+            gdk_rgba_parse(&(settings->color), g_key_file_get_string(file, group_name, "color", NULL));
             
         if (g_key_file_has_key(file, group_name, "image_file", NULL)) 
             settings->image_file = g_key_file_get_string(file, group_name, "image_file", NULL);
@@ -748,14 +749,14 @@ static manipulation read_changeformat(GKeyFile* file)
             settings->format = g_key_file_get_integer(file, group_name, "format", NULL);
         
             if (settings->format == FORMAT_GIF) {
-                settings->params = (format_params_gif) g_malloc(sizeof(struct changeformat_params_gif));
+                settings->params = format_params_new(settings->format);
                 format_params_gif params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "interlace", NULL)) 
                     params->interlace = g_key_file_get_boolean(file, group_name, "interlace", NULL);
             }
             else if (settings->format == FORMAT_JPEG) {
-                settings->params = (format_params_jpeg) g_malloc(sizeof(struct changeformat_params_jpeg));
+                settings->params = format_params_new(settings->format);
                 format_params_jpeg params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "quality", NULL)) 
@@ -786,7 +787,7 @@ static manipulation read_changeformat(GKeyFile* file)
                     params->dct = g_key_file_get_integer(file, group_name, "dct", NULL);
             }
             else if (settings->format == FORMAT_PNG) {
-                settings->params = (format_params_png) g_malloc(sizeof(struct changeformat_params_png));
+                settings->params = format_params_new(settings->format);
                 format_params_png params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "interlace", NULL)) 
@@ -817,7 +818,7 @@ static manipulation read_changeformat(GKeyFile* file)
                     params->savetrans = g_key_file_get_boolean(file, group_name, "savetrans", NULL);
             }
             else if (settings->format == FORMAT_TGA) {
-                settings->params = (format_params_tga) g_malloc(sizeof(struct changeformat_params_tga));
+                settings->params = format_params_new(settings->format);
                 format_params_tga params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "rle", NULL)) 
@@ -827,14 +828,14 @@ static manipulation read_changeformat(GKeyFile* file)
                     params->origin = g_key_file_get_integer(file, group_name, "origin", NULL);
             }
             else if (settings->format == FORMAT_TIFF) {
-                settings->params = (format_params_tiff) g_malloc(sizeof(struct changeformat_params_tiff));
+                settings->params = format_params_new(settings->format);
                 format_params_tiff params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "compression", NULL)) 
                     params->compression = g_key_file_get_integer(file, group_name, "compression", NULL);
             }
             else if (settings->format == FORMAT_HEIF) {
-                settings->params = (format_params_heif) g_malloc(sizeof(struct changeformat_params_heif));
+                settings->params = format_params_new(settings->format);
                 format_params_heif params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "lossless", NULL)) 
@@ -844,7 +845,7 @@ static manipulation read_changeformat(GKeyFile* file)
                     params->quality = g_key_file_get_integer(file, group_name, "quality", NULL);
             }
             else if (settings->format == FORMAT_WEBP) {
-                settings->params = (format_params_webp) g_malloc(sizeof(struct changeformat_params_webp));
+                settings->params = format_params_new(settings->format);
                 format_params_webp params = settings->params;
                 
                 if (g_key_file_has_key(file, group_name, "preset", NULL)) 
@@ -881,13 +882,13 @@ static manipulation read_changeformat(GKeyFile* file)
                     params->xmp = g_key_file_get_boolean(file, group_name, "xmp", NULL);
 
                 if (g_key_file_has_key(file, group_name, "delay", NULL)) 
-                    params->delay = g_key_file_get_boolean(file, group_name, "delay", NULL);
+                    params->delay = g_key_file_get_integer(file, group_name, "delay", NULL);
 
                 if (g_key_file_has_key(file, group_name, "force_delay", NULL)) 
                     params->force_delay = g_key_file_get_integer(file, group_name, "force_delay", NULL);
             }
             else if (settings->format == FORMAT_AVIF) {
-                settings->params = (format_params_avif) g_malloc(sizeof(struct changeformat_params_avif));
+                settings->params = format_params_new(settings->format);
                 format_params_avif params = settings->params;
 
                 if (g_key_file_has_key(file, group_name, "lossless", NULL)) 
@@ -929,101 +930,33 @@ static void write_userdef(userdef_settings settings, GKeyFile* file, int id)
 {
     gchar* group_name = g_strdup_printf("USERDEF%d", id);
     
+    if (settings->procedure == NULL) return;
+
     g_key_file_set_string(file, group_name, "procedure", settings->procedure);
-    g_key_file_set_integer(file, group_name, "num_params", settings->num_params);
-    
-    if (settings->num_params > 0) {        
-        int param_i;
-        GdkColor tempcolor;
-        for (param_i = 0; param_i < settings->num_params; param_i++) {
-            
-            gchar* param_i_str = g_strdup_printf("PARAM%d", param_i);
-            switch(settings->params[param_i].type) {
-                case GIMP_PDB_INT32:
-                    g_key_file_set_integer(file, group_name, param_i_str, settings->params[param_i].data.d_int32);
-                    break;
-                case GIMP_PDB_INT16:
-                    g_key_file_set_integer(file, group_name, param_i_str, settings->params[param_i].data.d_int16);
-                    break;
-                case GIMP_PDB_INT8:
-                    g_key_file_set_integer(file, group_name, param_i_str, settings->params[param_i].data.d_int8);
-                    break;
-                case GIMP_PDB_FLOAT: 
-                    g_key_file_set_double(file, group_name, param_i_str, settings->params[param_i].data.d_float);
-                    break;
-                case GIMP_PDB_STRING: 
-                    g_key_file_set_string(file, group_name, param_i_str, settings->params[param_i].data.d_string);
-                    break;
-                case GIMP_PDB_COLOR:
-                    tempcolor.red = (guint16)(((settings->params[param_i]).data.d_color.r)*65535);
-                    tempcolor.green = (guint16)(((settings->params[param_i]).data.d_color.g)*65535);
-                    tempcolor.blue = (guint16)(((settings->params[param_i]).data.d_color.b)*65535);
-                    
-                    g_key_file_set_string(file, group_name, param_i_str, gdk_color_to_string(&(tempcolor)));
-                    break;
-                
-                default: 
-                    g_key_file_set_string(file, group_name, param_i_str, "NOT_USED");
-                break;
-            }
-        }
-    }
+    if (settings->config != NULL)
+        g_key_file_set_string(file, group_name, "config", settings->config);
 }
 
+/* BIMP 2 stored the arguments of a procedure by position (PARAM0, PARAM1, ...)
+ * for the GIMP 2 PDB; GIMP 3 procedures have other arguments, so only the
+ * procedure is kept from such a file, with its default settings. */
 static manipulation read_userdef(GKeyFile* file, int id) 
 {
     gchar* group_name = g_strdup_printf("USERDEF%d", id);
     manipulation man = NULL;
     
-    if (g_key_file_has_group(file, group_name)) {
+    if (g_key_file_has_group(file, group_name) && g_key_file_has_key(file, group_name, "procedure", NULL)) {
         man = manipulation_userdef_new();
         userdef_settings settings = ((userdef_settings)man->settings);
         
-        if (g_key_file_has_key(file, group_name, "procedure", NULL) && g_key_file_has_key(file, group_name, "num_params", NULL)) {
-            settings->procedure = g_key_file_get_string(file, group_name, "procedure", NULL);
-            settings->num_params = g_key_file_get_integer(file, group_name, "num_params", NULL);
-            
-            settings->params = g_new(GimpParam, settings->num_params);
-            
-            int param_i;
-            GimpParamDef param_info;
-            GdkColor usercolor;
-            GimpRGB rgbdata;
-            for (param_i = 0; param_i < settings->num_params; param_i++) {
-                param_info = pdb_proc_get_param_info(settings->procedure, param_i);
-                
-                settings->params[param_i].type = param_info.type;
-                gchar* param_i_str = g_strdup_printf("PARAM%d", param_i);
-                switch(settings->params[param_i].type) {
-                    case GIMP_PDB_INT32:
-                        (settings->params[param_i]).data.d_int32 = (gint32)g_key_file_get_integer(file, group_name, param_i_str, NULL);
-                        break;
-                        
-                    case GIMP_PDB_INT16:
-                        (settings->params[param_i]).data.d_int16 = (gint16)g_key_file_get_integer(file, group_name, param_i_str, NULL);
-                        break;
-                        
-                    case GIMP_PDB_INT8:
-                        (settings->params[param_i]).data.d_int8 = (gint8)g_key_file_get_integer(file, group_name, param_i_str, NULL);
-                        break;
-                        
-                    case GIMP_PDB_FLOAT: 
-                        (settings->params[param_i]).data.d_float = (gdouble)g_key_file_get_double(file, group_name, param_i_str, NULL);
-                        break;
-                        
-                    case GIMP_PDB_STRING: 
-                        (settings->params[param_i]).data.d_string = g_key_file_get_string(file, group_name, param_i_str, NULL);
-                        break;
-                    
-                    case GIMP_PDB_COLOR: 
-                        gdk_color_parse (g_key_file_get_string(file, group_name, param_i_str, NULL), &usercolor);
-                        gimp_rgb_set(&rgbdata, (gdouble)usercolor.red/65535, (gdouble)usercolor.green/65535, (gdouble)usercolor.blue/65535);
-                        (settings->params[param_i]).data.d_color = rgbdata;
-                        break;
-                        
-                    default: break;
-                }
-            }
+        settings->procedure = g_key_file_get_string(file, group_name, "procedure", NULL);
+
+        if (g_key_file_has_key(file, group_name, "config", NULL)) {
+            settings->config = g_key_file_get_string(file, group_name, "config", NULL);
+        }
+        else if (g_key_file_has_key(file, group_name, "num_params", NULL)) {
+            g_printerr("BIMP: the settings of %s come from BIMP 2 and cannot be used "
+                       "with GIMP 3; its default settings are used instead\n", settings->procedure);
         }
     }
     

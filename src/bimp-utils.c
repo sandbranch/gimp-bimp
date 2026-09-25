@@ -7,15 +7,12 @@
 #include <gtk/gtk.h>
 #include <glib.h>
 #include <libgimp/gimp.h>
-#include "images/bimp-icons.h"
 #include "bimp-utils.h"
 
-#ifdef __unix__
-    #include <unistd.h>
-#elif defined _WIN32
+#ifdef _WIN32
     #include <windows.h>
-#elif defined __APPLE__
-    #include <mach-o/dyld.h>
+#else
+    #include <unistd.h>
 #endif
 
 #include <sys/stat.h>
@@ -125,28 +122,6 @@ gboolean file_has_extension(char* file, char* ext) {
     ); 
 }
 
-GimpParamDef pdb_proc_get_param_info(gchar* proc_name, gint arg_num) 
-{
-    GimpParamDef param_info;
-    GimpPDBArgType type;
-    gchar *name;
-    gchar *desc;
-        
-    gimp_procedural_db_proc_arg (
-        proc_name,
-        arg_num,
-        &type,
-        &name,
-        &desc
-    );
-    
-    param_info.type = type;
-    param_info.name = g_strdup(name);
-    param_info.description = g_strdup(desc);
-    
-    return param_info;
-}
-
 char* get_user_dir() 
 {
     char* path = NULL;
@@ -162,25 +137,6 @@ char* get_user_dir()
     return path;
 }
 
-char* get_bimp_localedir() 
-{
-    int bufsize = 1024;
-    char* path = g_malloc0(bufsize);
-    
-    // different methods for getting the plugin's absolute path, for different systems
-#ifdef __unix__
-    readlink("/proc/self/exe", path, bufsize);
-#elif defined _WIN32
-    GetModuleFileName(GetModuleHandle(NULL), path, bufsize);
-#elif defined __APPLE__
-    _NSGetExecutablePath(path, &bufsize);
-#endif
-    
-    memset(g_strrstr(path, FILE_SEPARATOR_STR), '\0', 1); // truncate at the last path separator (eliminates "bimp.exe")
-    
-    return g_strconcat(path, FILE_SEPARATOR_STR, "bimp-locale", NULL); // returns truncated path, plus "/bimp-locale" directory
-}
-
 /* C-string case-insensitive comparison function (with gconstpointer args) */ 
 int glib_strcmpi(gconstpointer str1, gconstpointer str2)
 {
@@ -189,10 +145,7 @@ int glib_strcmpi(gconstpointer str1, gconstpointer str2)
 
 gchar** get_path_folders (char *path)
 {
-    char * normalized_path = (char*)g_malloc(sizeof(path));
-
-    normalized_path = g_strdup(path);
-    return g_strsplit(normalized_path, FILE_SEPARATOR_STR, 0);
+    return g_strsplit(path, FILE_SEPARATOR_STR, 0);
 }
 
 /* gets the current date and time in "%Y-%m-%d_%H-%M" format */
@@ -253,47 +206,62 @@ GtkWidget* image_new_from_resource(const char* path)
 
 GtkWidget* image_new_from_resource_scaled(const char* path, GdkWindow *window) 
 {
-    GdkPixbuf* pixbuf = pixbuf_new_from_resource(path);
-    
-    // Must wait for GTK3
-    /*if (window) {
-        gint scaleFactor = gdk_window_get_scale_factor(window);
-        if (scaleFactor > 1) {
-            // Add "-x2" to the end of the filename in path but before the extension
-            char *iptr = strrchar(path, '.');
-            int index;
-            if(iptr) {
-                index = iptr - path;
-            }
-            else {
-                index = strlen(path);
-            }
-            char highResPath[strlen(path)+4];
-            memcpy(highResPath, path, index);
-            highResPath[index] = '-';
-            highResPath[index+1] = 'x';
-            highResPath[index+2] = '2';
-            memcpy(&highResPath[index+3], &path[index], strlen(path)-index);
-            highResPath[strlen(path)+3] = '\0';
-            
-            // Try and get high resolution version of the icon if it exists
-            GdkPixbuf* pixbuf2 = pixbuf_new_from_resource(highResPath);
-            if (pixbuf2) {
-               pixbuf = pixbuf2;
-               scaleFactor /= 2;
-            }
-            
-            // Scale the image if we still need to
-            if (scaleFactor != 1) {
-                gint width = gdk_pixbuf_get_width(pixbuf);
-                gint height = gdk_pixbuf_get_height(pixbuf);
-                pixbuf = gdk_pixbuf_scale_simple(pixbuf, width*scaleFactor, height*scaleFactor, GDK_INTERP_NEAREST);
-            }
-        }
-    }*/
+    return gtk_image_new_from_pixbuf(pixbuf_new_from_resource(path));
+}
 
-    GtkWidget* image;
-    image = gtk_image_new_from_pixbuf(pixbuf);
+/* colors: GTK widgets use GdkRGBA, GIMP uses GeglColor, and .bimp files
+ * store "#rrrrggggbbbb" (16 bits per channel) as GdkColor did in BIMP 2 */
 
-    return image;
+GeglColor* rgba_to_gegl(const GdkRGBA* rgba)
+{
+    GeglColor *color = gegl_color_new(NULL);
+    gegl_color_set_rgba_with_space(color, rgba->red, rgba->green, rgba->blue, rgba->alpha, babl_space("sRGB"));
+    return color;
+}
+
+gchar* rgba_to_hex16(const GdkRGBA* rgba)
+{
+    return g_strdup_printf("#%04x%04x%04x",
+        (guint)(CLAMP(rgba->red, 0, 1) * 65535 + 0.5),
+        (guint)(CLAMP(rgba->green, 0, 1) * 65535 + 0.5),
+        (guint)(CLAMP(rgba->blue, 0, 1) * 65535 + 0.5));
+}
+
+/* GTK 3 replacements for GTK 2's GtkAlignment and GtkTable, which BIMP's
+ * windows were built with */
+
+GtkWidget* bimp_align_new(gfloat xalign, gfloat yalign, gfloat xscale, gfloat yscale)
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    gtk_widget_set_halign(box, xscale >= 1.0 ? GTK_ALIGN_FILL :
+        xalign < 0.25 ? GTK_ALIGN_START : xalign > 0.75 ? GTK_ALIGN_END : GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(box, yscale >= 1.0 ? GTK_ALIGN_FILL :
+        yalign < 0.25 ? GTK_ALIGN_START : yalign > 0.75 ? GTK_ALIGN_END : GTK_ALIGN_CENTER);
+
+    return box;
+}
+
+void bimp_align_set_padding(GtkWidget* align, guint top, guint bottom, guint left, guint right)
+{
+    gtk_widget_set_margin_top(align, top);
+    gtk_widget_set_margin_bottom(align, bottom);
+    gtk_widget_set_margin_start(align, left);
+    gtk_widget_set_margin_end(align, right);
+}
+
+/* attaches like gtk_table_attach (left, right, top, bottom) */
+void bimp_grid_attach(GtkWidget* grid, GtkWidget* child, gint left, gint right, gint top, gint bottom, gboolean hexpand, gboolean vexpand)
+{
+    gtk_grid_attach(GTK_GRID(grid), child, left, top, right - left, bottom - top);
+    if (hexpand) gtk_widget_set_hexpand(child, TRUE);
+    if (vexpand) gtk_widget_set_vexpand(child, TRUE);
+}
+
+GtkWidget* bimp_grid_new(guint row_spacing, guint col_spacing)
+{
+    GtkWidget *grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), row_spacing);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), col_spacing);
+    return grid;
 }

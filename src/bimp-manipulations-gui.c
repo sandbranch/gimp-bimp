@@ -8,6 +8,7 @@
 #include "bimp-manipulations-gui.h"
 #include "bimp-manipulations.h"
 #include "bimp-gui.h"
+#include "plugin-intl.h"
 
 #include "manipulation-gui/gui-resize.h"
 #include "manipulation-gui/gui-crop.h"
@@ -32,52 +33,52 @@ void bimp_open_editwindow(manipulation man, gboolean first_time)
         bimp_manip_get_string(man->type),
         GTK_WINDOW(bimp_window_main),
         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-        GTK_STOCK_OK,
+        _("_OK"),
         GTK_RESPONSE_ACCEPT,
-        GTK_STOCK_CANCEL,
+        _("_Cancel"),
         GTK_RESPONSE_REJECT,
         NULL
     );
     gtk_container_set_border_width(GTK_CONTAINER(window), 10);
     
-    vbox = gtk_vbox_new(FALSE, 10);
+    vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width (GTK_CONTAINER (vbox), 5);
     
     if (man->type == MANIP_RESIZE) {
         gui = bimp_resize_gui_new((resize_settings)(man->settings));
-        save = &bimp_resize_save;
+        save = (void (*)(manipulation_settings)) bimp_resize_save;
     }
     else if (man->type == MANIP_CROP) {
         gui = bimp_crop_gui_new((crop_settings)(man->settings));
-        save = &bimp_crop_save;
+        save = (void (*)(manipulation_settings)) bimp_crop_save;
     }
     else if (man->type == MANIP_FLIPROTATE) {
         gui = bimp_fliprotate_gui_new((fliprotate_settings)(man->settings));
-        save = &bimp_fliprotate_save;
+        save = (void (*)(manipulation_settings)) bimp_fliprotate_save;
     }
     else if (man->type == MANIP_COLOR) {
         gui = bimp_color_gui_new((color_settings)(man->settings));
-        save = &bimp_color_save;
+        save = (void (*)(manipulation_settings)) bimp_color_save;
     }
     else if (man->type == MANIP_SHARPBLUR) {
         gui = bimp_sharpblur_gui_new((sharpblur_settings)(man->settings));
-        save = &bimp_sharpblur_save;
+        save = (void (*)(manipulation_settings)) bimp_sharpblur_save;
     }
     else if (man->type == MANIP_CHANGEFORMAT) {
         gui = bimp_changeformat_gui_new((changeformat_settings)(man->settings), window);
-        save = &bimp_changeformat_save;
+        save = (void (*)(manipulation_settings)) bimp_changeformat_save;
     }
     else if (man->type == MANIP_WATERMARK) {
         gui = bimp_watermark_gui_new((watermark_settings)(man->settings));
-        save = &bimp_watermark_save;
+        save = (void (*)(manipulation_settings)) bimp_watermark_save;
     }
     else if (man->type == MANIP_RENAME) {
         gui = bimp_rename_gui_new((rename_settings)(man->settings), window);
-        save = &bimp_rename_save;
+        save = (void (*)(manipulation_settings)) bimp_rename_save;
     }
     else if (man->type == MANIP_USERDEF) {
         gui = bimp_userdef_gui_new((userdef_settings)(man->settings), window);
-        save = &bimp_userdef_save;
+        save = (void (*)(manipulation_settings)) bimp_userdef_save;
     }
     else {
         gtk_widget_destroy (window);
@@ -85,7 +86,7 @@ void bimp_open_editwindow(manipulation man, gboolean first_time)
     }
     
     gtk_container_add (GTK_CONTAINER (vbox), gui);
-    gtk_container_add (GTK_CONTAINER (GTK_DIALOG(window)->vbox), vbox);
+    gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area(GTK_DIALOG(window))), vbox);
     
     gtk_widget_show_all(window);
     result = gtk_dialog_run (GTK_DIALOG (window));

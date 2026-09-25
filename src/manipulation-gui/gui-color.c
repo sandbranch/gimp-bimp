@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include "../bimp-utils.h"
 #include "gui-color.h"
 #include "../bimp-manipulations.h"
 #include "../bimp-manipulations-gui.h"
@@ -15,20 +16,18 @@ GtkWidget* bimp_color_gui_new(color_settings settings)
     GtkWidget *gui;
     GtkWidget *label_bright, *label_contrast;
     
-    gui = gtk_table_new(6, 2, FALSE);
-    gtk_table_set_row_spacings(GTK_TABLE(gui), 5);
-    gtk_table_set_col_spacings(GTK_TABLE(gui), 5);
+    gui = bimp_grid_new(0, 0);
+    gtk_grid_set_row_spacing(GTK_GRID(gui), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(gui), 5);
     
     label_bright = gtk_label_new(g_strconcat(_("Brightness"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_bright), 0, 0.5);
-    scale_bright = gtk_hscale_new_with_range(-0.5, +0.5, 0.01);
-    gtk_misc_set_alignment(GTK_MISC(scale_bright), 0, 0.5);
+    gtk_label_set_xalign(GTK_LABEL(label_bright), 0);
+    scale_bright = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, -0.5, +0.5, 0.01);
     gtk_range_set_value(GTK_RANGE(scale_bright), settings->brightness);
     
     label_contrast = gtk_label_new(g_strconcat(_("Contrast"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_contrast), 0, 0.5);
-    scale_contrast = gtk_hscale_new_with_range(-0.5, +0.5, 0.01);
-    gtk_misc_set_alignment(GTK_MISC(scale_contrast), 0, 0.5);
+    gtk_label_set_xalign(GTK_LABEL(label_contrast), 0);
+    scale_contrast = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, -0.5, +0.5, 0.01);
     gtk_range_set_value(GTK_RANGE(scale_contrast), settings->contrast);
     
     check_grayscale = gtk_check_button_new_with_label(_("Convert to grayscale"));
@@ -47,16 +46,16 @@ GtkWidget* bimp_color_gui_new(color_settings settings)
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check_curve), FALSE);
     }
     
-    gtk_table_attach(GTK_TABLE(gui), label_bright, 0, 1, 0, 1, GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
-    gtk_table_attach_defaults(GTK_TABLE(gui), scale_bright, 1, 2, 0, 1);
+    bimp_grid_attach(gui, label_bright, 0, 1, 0, 1, FALSE, TRUE);
+    bimp_grid_attach(gui, scale_bright, 1, 2, 0, 1, TRUE, TRUE);
     
-    gtk_table_attach(GTK_TABLE(gui), label_contrast, 0, 1, 1, 2, GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
-    gtk_table_attach_defaults(GTK_TABLE(gui), scale_contrast, 1, 2, 1, 2);
+    bimp_grid_attach(gui, label_contrast, 0, 1, 1, 2, FALSE, TRUE);
+    bimp_grid_attach(gui, scale_contrast, 1, 2, 1, 2, TRUE, TRUE);
     
-    gtk_table_attach_defaults(GTK_TABLE(gui), check_grayscale, 0, 2, 2, 3);
-    gtk_table_attach_defaults(GTK_TABLE(gui), check_autolevels, 0, 2, 3, 4);
-    gtk_table_attach_defaults(GTK_TABLE(gui), check_curve, 0, 2, 4, 5);
-    gtk_table_attach_defaults(GTK_TABLE(gui), chooser_curve, 0, 2, 5, 6);
+    bimp_grid_attach(gui, check_grayscale, 0, 2, 2, 3, TRUE, TRUE);
+    bimp_grid_attach(gui, check_autolevels, 0, 2, 3, 4, TRUE, TRUE);
+    bimp_grid_attach(gui, check_curve, 0, 2, 4, 5, TRUE, TRUE);
+    bimp_grid_attach(gui, chooser_curve, 0, 2, 5, 6, TRUE, TRUE);
     
     toggle_curve(NULL, NULL);
     g_signal_connect(G_OBJECT(check_curve), "toggled", G_CALLBACK(toggle_curve), NULL);

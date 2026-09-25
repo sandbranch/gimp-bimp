@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include <libgimp/gimp.h>
 #include <libgimpwidgets/gimpwidgets.h>
+#include "../bimp-utils.h"
 #include "gui-resize.h"
 #include "../bimp-manipulations.h"
 #include "../plugin-intl.h"
@@ -38,35 +39,35 @@ GtkWidget* bimp_resize_gui_new(resize_settings settings)
     last_pixel_w_value = settings->new_w_px;
     last_pixel_h_value = settings->new_h_px;
     
-    gui = gtk_vbox_new(FALSE, 10);
+    gui = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     
     // width/height
     
-    table_dimensions = gtk_table_new(2, 3, FALSE);
-    gtk_table_set_row_spacings(GTK_TABLE(table_dimensions), 5);
-    gtk_table_set_col_spacings(GTK_TABLE(table_dimensions), 5);
+    table_dimensions = bimp_grid_new(0, 0);
+    gtk_grid_set_row_spacing(GTK_GRID(table_dimensions), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(table_dimensions), 5);
     
     label_width = gtk_label_new(g_strconcat(_("Width"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_width), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_width), 0);
     spin_width = gtk_spin_button_new(NULL, 1, 0);
-    combo_unitW = gtk_combo_box_new_text();
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitW), _("%"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitW), _("px"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitW), _("Disable"));
+    combo_unitW = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitW), _("%"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitW), _("px"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitW), _("Disable"));
     gtk_combo_box_set_active(GTK_COMBO_BOX(combo_unitW), settings->resize_mode_width);
     
     label_height = gtk_label_new(g_strconcat(_("Height"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_height), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_height), 0);
     spin_height = gtk_spin_button_new(NULL, 1, 0);
-    combo_unitH = gtk_combo_box_new_text();
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitH), _("%"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitH), _("px"));
-    gtk_combo_box_append_text(GTK_COMBO_BOX(combo_unitH), _("Disable"));
+    combo_unitH = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitH), _("%"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitH), _("px"));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_unitH), _("Disable"));
     gtk_combo_box_set_active(GTK_COMBO_BOX(combo_unitH), settings->resize_mode_height);
     
     // aspect ratio
     
-    hbox_aspectratio = gtk_hbox_new(FALSE, 5);
+    hbox_aspectratio = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     label_aspectratio = gtk_label_new(g_strconcat(_("Aspect ratio"), ":", NULL));
     combo_aspectratio = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_aspectratio), _("Stretch"));
@@ -76,55 +77,54 @@ GtkWidget* bimp_resize_gui_new(resize_settings settings)
     
     // padding color
     
-    hbox_pad = gtk_hbox_new(FALSE, 5);
+    hbox_pad = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     label_pad = gtk_label_new(g_strconcat(_("Padding color"), ":", NULL));
-    chooser_paddingcolor = gtk_color_button_new_with_color(&(settings->padding_color));
-    gtk_color_button_set_use_alpha(GTK_COLOR_BUTTON(chooser_paddingcolor), TRUE);
-    gtk_color_button_set_alpha(GTK_COLOR_BUTTON(chooser_paddingcolor), settings->padding_color_alpha);
+    chooser_paddingcolor = gtk_color_button_new_with_rgba(&(settings->padding_color));
+    gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(chooser_paddingcolor), TRUE);
     gtk_widget_set_sensitive(GTK_WIDGET(chooser_paddingcolor), settings->stretch_mode == STRETCH_PADDED);
     
     // interpolation
     
-    hbox_quality = gtk_hbox_new(FALSE, 5);
+    hbox_quality = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     label_quality = gtk_label_new(g_strconcat(_("Interpolation"), ":", NULL));
     combo_quality = gimp_enum_combo_box_new((GType)GIMP_TYPE_INTERPOLATION_TYPE);
     gimp_int_combo_box_set_active((GimpIntComboBox*)combo_quality, settings->interpolation);
     
     // resolution
     
-    hsep = gtk_hseparator_new();
+    hsep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
     
-    table_res = gtk_table_new(2, 3, FALSE);
-    gtk_table_set_row_spacings(GTK_TABLE(table_res), 5);
-    gtk_table_set_col_spacings(GTK_TABLE(table_res), 5);
+    table_res = bimp_grid_new(0, 0);
+    gtk_grid_set_row_spacing(GTK_GRID(table_res), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(table_res), 5);
     
     check_resolution = gtk_check_button_new_with_label(_("Change resolution"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check_resolution), settings->change_res);
     
-    align_res = gtk_alignment_new(0, 0.5, 1, 0);
-    gtk_alignment_set_padding(GTK_ALIGNMENT(align_res), 0, 0, 10, 0);
+    align_res = bimp_align_new(0, 0.5, 1, 0);
+    bimp_align_set_padding(align_res, 0, 0, 10, 0);
     label_resX = gtk_label_new(g_strconcat(_("X axis"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_resX), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_resX), 0);
     spin_resX = gtk_spin_button_new(NULL, 1, 0);
     gtk_spin_button_configure(GTK_SPIN_BUTTON(spin_resX), GTK_ADJUSTMENT(gtk_adjustment_new (settings->new_res_x, 0.005, 65536.000, 1.000, 1, 0)), 0, 3);
     label_resY = gtk_label_new(g_strconcat(_("Y axis"), ":", NULL));
-    gtk_misc_set_alignment(GTK_MISC(label_resY), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_resY), 0);
     spin_resY = gtk_spin_button_new(NULL, 1, 0);
     gtk_spin_button_configure(GTK_SPIN_BUTTON(spin_resY), GTK_ADJUSTMENT(gtk_adjustment_new (settings->new_res_y, 0.005, 65536.000, 1.000, 1, 0)), 0, 3);
     label_dpi1 = gtk_label_new("dpi");
-    gtk_misc_set_alignment(GTK_MISC(label_dpi1), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_dpi1), 0);
     label_dpi2 = gtk_label_new("dpi");
-    gtk_misc_set_alignment(GTK_MISC(label_dpi2), 0, .5);
+    gtk_label_set_xalign(GTK_LABEL(label_dpi2), 0);
     
     // pack everything
     
-    gtk_table_attach(GTK_TABLE(table_dimensions), label_width, 0, 1, 0, 1, GTK_FILL, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_dimensions), spin_width, 1, 2, 0, 1, GTK_FILL | GTK_EXPAND, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_dimensions), combo_unitW, 2, 3, 0, 1, GTK_FILL, 0, 0, 0);
+    bimp_grid_attach(table_dimensions, label_width, 0, 1, 0, 1, FALSE, FALSE);
+    bimp_grid_attach(table_dimensions, spin_width, 1, 2, 0, 1, TRUE, FALSE);
+    bimp_grid_attach(table_dimensions, combo_unitW, 2, 3, 0, 1, FALSE, FALSE);
     
-    gtk_table_attach(GTK_TABLE(table_dimensions), label_height, 0, 1, 1, 2, GTK_FILL, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_dimensions), spin_height, 1, 2, 1, 2, GTK_FILL | GTK_EXPAND, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_dimensions), combo_unitH, 2, 3, 1, 2, GTK_FILL, 0, 0, 0);
+    bimp_grid_attach(table_dimensions, label_height, 0, 1, 1, 2, FALSE, FALSE);
+    bimp_grid_attach(table_dimensions, spin_height, 1, 2, 1, 2, TRUE, FALSE);
+    bimp_grid_attach(table_dimensions, combo_unitH, 2, 3, 1, 2, FALSE, FALSE);
     
     gtk_box_pack_start(GTK_BOX(gui), table_dimensions, TRUE, TRUE, 0);
     
@@ -143,13 +143,13 @@ GtkWidget* bimp_resize_gui_new(resize_settings settings)
     gtk_box_pack_start(GTK_BOX(gui), hsep, TRUE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(gui), check_resolution, TRUE, FALSE, 0);
     
-    gtk_table_attach(GTK_TABLE(table_res), label_resX, 0, 1, 0, 1, GTK_FILL, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_res), spin_resX, 1, 2, 0, 1, GTK_FILL | GTK_EXPAND, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_res), label_dpi1, 2, 3, 0, 1, GTK_FILL, 0, 0, 0);
+    bimp_grid_attach(table_res, label_resX, 0, 1, 0, 1, FALSE, FALSE);
+    bimp_grid_attach(table_res, spin_resX, 1, 2, 0, 1, TRUE, FALSE);
+    bimp_grid_attach(table_res, label_dpi1, 2, 3, 0, 1, FALSE, FALSE);
     
-    gtk_table_attach(GTK_TABLE(table_res), label_resY, 0, 1, 1, 2, GTK_FILL, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_res), spin_resY, 1, 2, 1, 2, GTK_FILL | GTK_EXPAND, 0, 0, 0);
-    gtk_table_attach(GTK_TABLE(table_res), label_dpi2, 2, 3, 1, 2, GTK_FILL, 0, 0, 0);
+    bimp_grid_attach(table_res, label_resY, 0, 1, 1, 2, FALSE, FALSE);
+    bimp_grid_attach(table_res, spin_resY, 1, 2, 1, 2, TRUE, FALSE);
+    bimp_grid_attach(table_res, label_dpi2, 2, 3, 1, 2, FALSE, FALSE);
     
     gtk_container_add(GTK_CONTAINER(align_res), table_res);
     gtk_box_pack_start(GTK_BOX(gui), align_res, TRUE, FALSE, 0);
@@ -280,8 +280,7 @@ void bimp_resize_save(resize_settings orig_settings)
     
     orig_settings->stretch_mode = gtk_combo_box_get_active(GTK_COMBO_BOX(combo_aspectratio));
     
-    gtk_color_button_get_color(GTK_COLOR_BUTTON(chooser_paddingcolor), &(orig_settings->padding_color));
-    orig_settings->padding_color_alpha = gtk_color_button_get_alpha(GTK_COLOR_BUTTON(chooser_paddingcolor));
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(chooser_paddingcolor), &(orig_settings->padding_color));
     
     orig_settings->interpolation = gtk_combo_box_get_active(GTK_COMBO_BOX(combo_quality));
     

@@ -1,0 +1,24 @@
+# BIMP 3.0
+# inputs: photo.png alpha.png photo.jpg
+[RESIZE]
+new_w_pc=50
+new_h_pc=50
+resize_mode_width=0
+resize_mode_height=0
+stretch_mode=0
+[COLOR]
+brightness=0
+contrast=0.2
+[WATERMARK0]
+mode=true
+text=chain
+font=Sans 20px
+color=#000000000000
+opacity=80
+edge_distance=5
+position=4
+[CHANGEFORMAT]
+format=3
+quality=85
+[RENAME]
+pattern=$$-small

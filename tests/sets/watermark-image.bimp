@@ -1,0 +1,9 @@
+# BIMP 3.0
+[WATERMARK0]
+mode=false
+image_file=@IMAGES@/logo.png
+image_sizemode=1
+image_size_percent=25
+opacity=50
+edge_distance=0
+position=0
