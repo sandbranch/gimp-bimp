@@ -21,7 +21,8 @@
 #include "../plugin-intl.h"
 
 static void init_procedure_list(void);
-static int fill_procedure_list(const char*, const char*);
+static int fill_procedure_list(const char*);
+static gboolean procedure_visible(GtkTreeModel*, GtkTreeIter*, gpointer);
 static void search_procedure (GtkEditable*, gpointer);
 static void selection_changed (GtkTreeSelection*, gpointer);
 static void update_procedure_box(void);
@@ -30,6 +31,8 @@ static void edit_settings (GtkButton*, gpointer);
 static GtkWidget *treeview_procedures;
 static GtkWidget *label_procedure, *label_blurb, *label_settings, *button_settings;
 static GtkWidget *parent_dialog;
+static GtkWidget *entry_search;
+static GtkTreeModel *filter_model;
 
 /* the procedure and settings being edited, until the user clicks OK */
 static gchar *temp_procedure;
@@ -46,7 +49,6 @@ GtkWidget* bimp_userdef_gui_new(userdef_settings settings, GtkWidget *parent)
     GtkWidget *gui, *grid_chooser, *vbox_proc;
     GtkWidget *scroll_procedures;
     GtkWidget *label_help, *label_search;
-    GtkWidget *entry_search;
     GtkTreeSelection *treesel_proc;
 
     parent_dialog = parent;
@@ -106,7 +108,7 @@ GtkWidget* bimp_userdef_gui_new(userdef_settings settings, GtkWidget *parent)
     gtk_box_pack_start(GTK_BOX(gui), grid_chooser, TRUE, TRUE, 0);
 
     treesel_proc = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview_procedures));
-    int sel_index = fill_procedure_list(NULL, temp_procedure);
+    int sel_index = fill_procedure_list(temp_procedure);
     if (sel_index >= 0) {
         GtkTreePath *path = gtk_tree_path_new_from_indices(sel_index, -1);
         gtk_tree_selection_select_path(treesel_proc, path);
@@ -132,46 +134,55 @@ static void init_procedure_list()
     column = gtk_tree_view_column_new_with_attributes("List Items", renderer, "text", LIST_ITEM, NULL);
     gtk_tree_view_append_column(GTK_TREE_VIEW(treeview_procedures), column);
 
+    /* all supported procedures once; the search only filters them */
     store = gtk_list_store_new(N_COLUMNS, G_TYPE_STRING);
-    gtk_tree_view_set_model(GTK_TREE_VIEW(treeview_procedures), GTK_TREE_MODEL(store));
+    filter_model = gtk_tree_model_filter_new(GTK_TREE_MODEL(store), NULL);
+    gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(filter_model), procedure_visible, NULL, NULL);
+    gtk_tree_view_set_model(GTK_TREE_VIEW(treeview_procedures), filter_model);
+    g_object_unref(filter_model);
     g_object_unref(store);
 }
 
-/* fills the treeview with only those procedures that can be used for a batch operation.
- * the functions supports a filter for user searches; returns the row of 'selection' or -1 */
-static int fill_procedure_list(const char* search, const char* selection)
+static gboolean procedure_visible(GtkTreeModel *model, GtkTreeIter *iter, gpointer data)
 {
-    GtkListStore *store = GTK_LIST_STORE(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview_procedures)));
+    const gchar *search = entry_search ? gtk_entry_get_text(GTK_ENTRY(entry_search)) : NULL;
+    gchar *name = NULL;
+    gboolean visible;
+
+    if (search == NULL || *search == '\0') return TRUE;
+
+    gtk_tree_model_get(model, iter, LIST_ITEM, &name, -1);
+    visible = name != NULL && str_contains_cins(name, (char*)search);
+    g_free(name);
+
+    return visible;
+}
+
+/* fills the list with the procedures that can be used in a batch;
+ * returns the row of 'selection', or -1 */
+static int fill_procedure_list(const char* selection)
+{
+    GtkListStore *store = GTK_LIST_STORE(gtk_tree_model_filter_get_model(GTK_TREE_MODEL_FILTER(filter_model)));
     GtkTreeIter iter;
     GSList *cur;
     int row = 0, found = -1;
-
+    
     init_supported_procedures();
-    gtk_list_store_clear(store);
-
+    
     for (cur = bimp_supported_procedures; cur != NULL; cur = cur->next) {
         char *name = cur->data;
-        if (search == NULL || strlen(search) == 0 || str_contains_cins(name, (char*)search)) {
-            gtk_list_store_append(store, &iter);
-            gtk_list_store_set(store, &iter, LIST_ITEM, name, -1);
-            if (selection != NULL && strcmp(name, selection) == 0) found = row;
-            row++;
-        }
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, LIST_ITEM, name, -1);
+        if (selection != NULL && strcmp(name, selection) == 0) found = row;
+        row++;
     }
-
+    
     return found;
 }
 
 static void search_procedure (GtkEditable *editable, gpointer data)
 {
-    const gchar *text = gtk_entry_get_text(GTK_ENTRY(editable));
-    int row = fill_procedure_list(text, temp_procedure);
-
-    if (row >= 0) {
-        GtkTreePath *path = gtk_tree_path_new_from_indices(row, -1);
-        gtk_tree_selection_select_path(gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview_procedures)), path);
-        gtk_tree_path_free(path);
-    }
+    gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(filter_model));
 }
 
 static void selection_changed (GtkTreeSelection *selection, gpointer data)
@@ -255,7 +266,6 @@ static void update_procedure_box()
 static gchar* serialize_settings(GimpProcedure *proc, GimpProcedureConfig *config)
 {
     bimp_userdef_set_image(proc, config, NULL, NULL);
-    g_object_set(config, "run-mode", GIMP_RUN_NONINTERACTIVE, NULL);
 
     return gimp_config_serialize_to_string(GIMP_CONFIG(config), NULL);
 }
@@ -273,6 +283,8 @@ static void edit_settings (GtkButton *button, gpointer data)
     dialog = gimp_procedure_dialog_new(proc, config,
         gimp_procedure_get_menu_label(proc) ? gimp_procedure_get_menu_label(proc) : temp_procedure);
     gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(parent_dialog));
+    /* the dialog it opens from is modal: this one must be too, to get input */
+    gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
     gimp_procedure_dialog_set_ok_label(GIMP_PROCEDURE_DIALOG(dialog), _("_OK"));
 
     args = editable_arguments(proc);

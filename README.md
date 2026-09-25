@@ -1,69 +1,82 @@
 BIMP. Batch Image Manipulation Plugin for GIMP.
 ===============================================
 
-With BIMP you can apply a set of GIMP manipulations on groups of images.
+> **This is the GIMP 3 version of BIMP**, maintained at
+> [sandbranch/gimp-plugin-bimp](https://github.com/sandbranch/gimp-plugin-bimp)
+> (branch `gimp3`) while the original project has no GIMP 3 release. The
+> original, for GIMP 2.10, is
+> [alessandrofrancesconi/gimp-plugin-bimp](https://github.com/alessandrofrancesconi/gimp-plugin-bimp).
+
+With BIMP you can apply a set of GIMP manipulations on groups of images:
+resize, crop, flip or rotate, color correction, sharpen or blur,
+watermarks (text or image), change format and compression, rename with a
+pattern, and any other GIMP procedure. Sets of manipulations can be saved
+and loaded again.
+
 Documentation @ http://www.alessandrofrancesconi.it/projects/bimp
 
 ![A screenshot of BIMP](http://www.alessandrofrancesconi.it/projects/bimp/images/bimp-main.jpg)
 
-Installing on Windows
----------------------
+In GIMP 3: File > Batch Image Manipulation...
 
-BIMP can be easily installed on your Windows 32/64bit machine with the 
-official installer: https://github.com/alessandrofrancesconi/gimp-plugin-bimp/releases/latest/
-then download `gimp-plugin-bimp_win32.exe`
+What is new for GIMP 3
+----------------------
 
-*Note for GIMP Portable users:* If you experience strange things like missing buttons or totally white windows, 
-first ensure you have installed the latest version of the GTK+ runtime (download it from [here](https://sourceforge.net/projects/gtk-win/files/latest/download?source=files)).
+- **Runs in GIMP 3** (GTK 3, the GIMP 3 plug-in API).
+- **Batch without a window**: the procedure `plug-in-bimp-batch` applies a
+  set saved from the BIMP window (`.bimp`) to a list of files, from
+  scripts or the command line, e.g. in Python inside GIMP:
 
-Compiling and installing on Linux
------------------------------------------
+      proc = Gimp.get_pdb().lookup_procedure('plug-in-bimp-batch')
+      config = proc.create_config()
+      config.set_property('set-file', Gio.File.new_for_path('web.bimp'))
+      config.set_property('files', ['/photos/a.jpg', '/photos/b.jpg'])
+      config.set_property('output-folder', Gio.File.new_for_path('/photos/web'))
+      config.set_property('overwrite', False)
+      proc.run(config)
 
-You must have gimptool installed in order to have the full set of libraries
-and dependences needed to compile BIMP (names can differ depending on the distro).
+- **Other GIMP procedure...** edits the procedure's settings in GIMP's own
+  dialog for it.
+- Formats are written with GIMP 3's exporters: BMP, GIF, ICO, JPEG, PNG,
+  TGA, TIFF, HEIF, WebP, AVIF and OpenEXR.
+- `.bimp` files from BIMP 2 load, except the settings of "Other GIMP
+  procedure...", which GIMP 3's procedures cannot take (the procedure is
+  kept, with its defaults).
 
-For Debian-based (Ubuntu, Linux Mint, ...)
+Compiling and installing
+------------------------
 
-	sudo apt-get install libgimp2.0-dev libgegl-dev
+Needs meson, ninja, a C compiler, gettext and the GIMP 3 development files
+(`libgimp-3.0-dev` on Debian and Ubuntu, `gimp-devel` on Fedora).
 
-For Fedora:
+    meson setup build -Dplugindir=$HOME/.config/GIMP/3.2/plug-ins
+    ninja -C build install
 
-	sudo dnf install gimp-devel-tools
+This installs `bimp/bimp` and its translations into the plug-in folder.
+Without `-Dplugindir` it goes into GIMP's system folder (needs root).
 
-Extract the archive containing the BIMP's sources and get into the extracted folder with `cd`. Then:
+For the Flatpak version of GIMP, build inside it with
+[gimp-plugin-devtools](https://github.com/sandbranch/gimp-plugin-devtools):
 
-	make && make install
-	
-Or:
+    gimp-build.sh . meson setup build -Dplugindir=\$GIMP_PLUGINDIR
+    gimp-build.sh . ninja -C build install
 
-	make && sudo make install-admin
+Restart GIMP after installing.
 
-to make and install for every user in the system (needs root privileges).
+The Windows installer (`nsis/`) and the macOS build have not been updated
+for GIMP 3 yet.
 
+Tests
+-----
 
-For Mac OSX users
------------------
-Starting from BIMP 2.5, the MacOS version is available in the Release page: https://github.com/alessandrofrancesconi/gimp-plugin-bimp/releases. Please note: it may not work in every GIMP/MacOS version. See the release page for details.
-
-For those interested in remaining on the cutting edge, the instructions to compile are as follows:
-
-1. Install [MacPorts](https://www.macports.org/install.php)
-2. Install prerequisites: `sudo port install coreutils `
-3. Add `/opt/local/libexec/gnubin` to your `PATH` to make them the GNU tools the default: `PATH=/opt/local/libexec/gnubin:$PATH`  (You can also add this to your login profile if you want the change to be permanent).
-3. Install GIMP with MacPorts: `sudo port install gimp +quartz` (You can leave off the `+quartz` if you prefer GIMP to run in the X11 environment instead of natively.)
-4. Follow the build and install instructions for Linux.
-5. Look at the output for the install command.  If your plug-in directory contains a space in its name (as would happen if it is in the `Application Support` folder), then there will be a copy command which failed listed.  You will need to perform that copy command manually with the destination directory properly wrapped in quotes.  I.e. if you see
-```
-cp ./bin/bimp /Users/NAME/Library/Application Support/GIMP/2.8/plug-ins
-cp: target 'Support/GIMP/2.8/plug-ins' is not a directory
-```
-then you need to do `cp ./bin/bimp "/Users/NAME/Library/Application Support/GIMP/2.8/plug-ins"`.
-
-*Note:* Even though you have to install GIMP from MacPorts in order to build the binaries for BIMP, they should work just fine with the self-contained GIMP build from gimp.org.  In fact, you could probably uninstall the MacPorts version once the binaries are built, but you'll need to reinstall it each time you want to update BIMP.
-
+`tests/run.sh` applies each set in `tests/sets` (one per manipulation and
+format, a chain, and a BIMP 2 file) to test images inside a headless GIMP
+(Flatpak) and checks the results with `tests/check.py`. `tests/gui/start.sh`
+opens the window on a Broadway display to look at it in a browser.
 
 Support this project
 --------------------
 
-Visit http://github.com/alessandrofrancesconi/gimp-plugin-bimp/issues
-and post alerts for bugs or enhancements. Make it better!
+For the GIMP 3 version: https://github.com/sandbranch/gimp-plugin-bimp/issues
+
+For the original: http://github.com/alessandrofrancesconi/gimp-plugin-bimp/issues

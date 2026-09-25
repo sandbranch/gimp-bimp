@@ -108,6 +108,7 @@ void bimp_show_gui()
     panel_options = option_panel_new();
     
     progressbar_visible = gtk_progress_bar_new();
+    gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progressbar_visible), TRUE);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progressbar_visible), " ");
     progressbar_data = progressbar_init_hidden();
     
