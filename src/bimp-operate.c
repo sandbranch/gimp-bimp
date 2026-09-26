@@ -1206,9 +1206,12 @@ static const gchar* webp_preset_name(int preset)
 
 static void convert_to_indexed(image_output out)
 {
-    GimpLayer *layer = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    GimpLayer *layer = merge_layers(out->image);
 
     if (!gimp_drawable_is_indexed(GIMP_DRAWABLE(layer))) {
+        // GIMP converts only 8-bit images to indexed
+        if (gimp_image_get_precision(out->image) != GIMP_PRECISION_U8_NON_LINEAR)
+            gimp_image_convert_precision(out->image, GIMP_PRECISION_U8_NON_LINEAR);
         gimp_image_convert_indexed(
             out->image,
             GIMP_CONVERT_DITHER_FS,
@@ -1216,7 +1219,7 @@ static void convert_to_indexed(image_output out)
             gimp_drawable_has_alpha(GIMP_DRAWABLE(layer)) ? 255 : 256,
             TRUE,
             FALSE,
-            NULL
+            "" /* not used with a generated palette, but GIMP refuses NULL */
         );
     }
 }
