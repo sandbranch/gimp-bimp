@@ -386,6 +386,29 @@ static void refresh_drawables(image_output out)
     for (out->drawable_count = 0; out->drawables[out->drawable_count] != NULL; out->drawable_count++);
 }
 
+/* merges the visible layers into one. GIMP 3 gives the merged layer an alpha
+ * channel even when there is only one layer, which would turn every RGB or
+ * gray image into RGBA or gray with alpha: a single visible layer that covers
+ * the image is kept as it is. */
+static GimpLayer* merge_layers(GimpImage *image)
+{
+    GimpLayer **layers = gimp_image_get_layers(image);
+    GimpLayer *layer = NULL;
+    gint x, y;
+
+    if (layers[0] != NULL && layers[1] == NULL &&
+        gimp_item_get_visible(GIMP_ITEM(layers[0])) &&
+        gimp_layer_get_opacity(layers[0]) == 100.0 &&
+        gimp_drawable_get_width(GIMP_DRAWABLE(layers[0])) == gimp_image_get_width(image) &&
+        gimp_drawable_get_height(GIMP_DRAWABLE(layers[0])) == gimp_image_get_height(image) &&
+        gimp_drawable_get_offsets(GIMP_DRAWABLE(layers[0]), &x, &y) && x == 0 && y == 0) {
+        layer = layers[0];
+    }
+    g_free(layers);
+
+    return layer != NULL ? layer : gimp_image_merge_visible_layers(image, GIMP_CLIP_TO_IMAGE);
+}
+
 /* loads the image and applies every manipulation except rename and format;
  * returns FALSE if the image cannot be loaded */
 gboolean bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_filename, gchar* orig_basename)
@@ -1052,7 +1075,7 @@ static gboolean apply_userdef(userdef_settings settings, image_output out)
     if (return_vals) gimp_value_array_unref(return_vals);
     g_object_unref(config);
 
-    gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    merge_layers(out->image);
     refresh_drawables(out);
 
     return success;
@@ -1238,7 +1261,7 @@ static gboolean image_save(format_type type, image_output out, format_params par
     GimpProcedure *proc = NULL;
     GimpProcedureConfig *config = NULL;
 
-    gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    merge_layers(out->image);
 
     if (type == FORMAT_BMP) {
         config = export_config("file-bmp-export", &proc, out);
@@ -1256,7 +1279,7 @@ static gboolean image_save(format_type type, image_output out, format_params par
     }
     else if(type == FORMAT_JPEG) {
         format_params_jpeg p = params;
-        GimpLayer *layer = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+        GimpLayer *layer = merge_layers(out->image);
 
         // the JPEG exporter does not take indexed images
         if (gimp_drawable_is_indexed(GIMP_DRAWABLE(layer))) {
