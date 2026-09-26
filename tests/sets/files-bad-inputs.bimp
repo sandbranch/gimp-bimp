@@ -1,0 +1,6 @@
+# BIMP 3.0
+# files that do not load are errors, the others are done
+# inputs: photo.png broken.png empty.png missing.png photo.jpg
+# expect: errors=3
+[FLIPROTATE]
+flip_h=true

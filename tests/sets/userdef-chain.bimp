@@ -1,0 +1,8 @@
+# BIMP 3.0
+# two procedures in a row
+[USERDEF0]
+procedure=gimp-image-flip
+config=(flip-type vertical)\n
+[USERDEF1]
+procedure=gimp-drawable-desaturate
+config=(desaturate-mode average)\n

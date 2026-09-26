@@ -1,0 +1,6 @@
+# BIMP 3.0
+# expect: status=execution-error
+[CROP]
+ratio=9
+custom_ratio1=4
+custom_ratio2=0

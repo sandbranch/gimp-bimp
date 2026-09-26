@@ -1,0 +1,13 @@
+# BIMP 3.0
+# padding on every pixel format
+# inputs: gray.png gray-alpha.png indexed.png rgb16.png float.tif alpha.png multilayer.xcf
+[RESIZE]
+new_w_px=300
+new_h_px=300
+resize_mode_width=1
+resize_mode_height=1
+stretch_mode=2
+padding_color=#0000ffff0000
+padding_color_alpha=65535
+[CHANGEFORMAT]
+format=4

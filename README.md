@@ -25,7 +25,9 @@ What is new for GIMP 3
 - **Runs in GIMP 3** (GTK 3, the GIMP 3 plug-in API).
 - **Batch without a window**: the procedure `plug-in-bimp-batch` applies a
   set saved from the BIMP window (`.bimp`) to a list of files, from
-  scripts or the command line, e.g. in Python inside GIMP:
+  scripts or the command line, e.g. in Python inside GIMP (the output
+  folder is created if needed; it returns the number of files processed
+  and of errors):
 
       proc = Gimp.get_pdb().lookup_procedure('plug-in-bimp-batch')
       config = proc.create_config()
@@ -69,10 +71,27 @@ for GIMP 3 yet.
 Tests
 -----
 
-`tests/run.sh` applies each set in `tests/sets` (one per manipulation and
-format, a chain, and a BIMP 2 file) to test images inside a headless GIMP
-(Flatpak) and checks the results with `tests/check.py`. `tests/gui/start.sh`
-opens the window on a Broadway display to look at it in a browser.
+`tests/run.sh` builds BIMP into `tests/output`, runs the unit tests of the
+`.bimp` format (`meson test`, no GIMP needed), and then runs a headless
+GIMP (Flatpak) with a profile of its own in `tests/output/profile`
+(`GIMP3_DIRECTORY`), so an installed BIMP and your GIMP settings are not
+used or changed. It applies each set in `tests/sets` to test images with
+`plug-in-bimp-batch`: one per manipulation and format, a chain, BIMP 2
+files, and edge cases (broken and hand-written sets, files that do not
+load, odd file names, gray, indexed, 16-bit, float and multi-layer images,
+existing and read-only output folders, metadata, "Other GIMP procedure..."
+with several kinds of settings, a locale with a decimal comma). It prints
+PASS or FAIL per test and exits with 1 if any failed. It needs
+[gimp-plugin-devtools](https://github.com/sandbranch/gimp-plugin-devtools)
+next to this folder (or `GIMP_DEVTOOLS=<folder>`), Python 3 with numpy and
+Pillow, and takes a minute longer the first time.
+
+`BIMP_SANITIZE=1 tests/run.sh` does the same with BIMP built with
+AddressSanitizer and UndefinedBehaviorSanitizer; the plug-in runs so
+inside GIMP, and any report fails the run.
+
+`tests/gui/start.sh` opens the window on a Broadway display to look at it
+in a browser.
 
 Support this project
 --------------------

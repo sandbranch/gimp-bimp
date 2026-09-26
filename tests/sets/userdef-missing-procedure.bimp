@@ -1,0 +1,5 @@
+# BIMP 3.0
+# a procedure this GIMP does not have
+# expect: errors=1
+[USERDEF0]
+procedure=plug-in-that-does-not-exist

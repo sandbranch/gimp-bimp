@@ -1,0 +1,26 @@
+# BIMP 3.0
+# every manipulation on gray, indexed, 16-bit, float, alpha and multi-layer images, to GIF
+# inputs: gray.png gray-alpha.png indexed.png rgb16.png float.tif alpha.png multilayer.xcf
+[RESIZE]
+new_w_pc=50
+new_h_pc=50
+[COLOR]
+brightness=0.1
+[SHARPBLUR]
+amount=-30
+[WATERMARK0]
+mode=true
+text=BIMP
+font=Sans 12px
+color=#ffff00000000
+opacity=100
+position=8
+[WATERMARK1]
+mode=false
+image_file=@IMAGES@/logo.png
+image_sizemode=1
+image_size_percent=20
+opacity=50
+position=0
+[CHANGEFORMAT]
+format=1

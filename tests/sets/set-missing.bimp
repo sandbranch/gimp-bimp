@@ -1,0 +1,6 @@
+# BIMP 3.0
+# set-file: missing
+# a file argument that does not exist is refused by GIMP
+# expect: status=calling-error
+[RESIZE]
+new_w_pc=50

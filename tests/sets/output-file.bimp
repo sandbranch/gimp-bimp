@@ -1,0 +1,7 @@
+# BIMP 3.0
+# output: notafolder
+# output-state: file
+# GIMP refuses a file as the folder
+# expect: status=calling-error
+[FLIPROTATE]
+flip_h=true

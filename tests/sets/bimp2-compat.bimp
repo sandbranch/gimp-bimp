@@ -1,4 +1,6 @@
 # BIMP 2.6
+# plug-in-gauss is not in GIMP 3: that image counts as an error, the rest is done
+# expect: errors=1
 # MANIPULATION SET DEFINITION
 [RESIZE]
 new_w_pc=100

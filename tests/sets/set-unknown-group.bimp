@@ -1,0 +1,7 @@
+# BIMP 3.0
+# a group from a newer BIMP is skipped, and does not repeat the resize
+[RESIZE]
+new_w_pc=50
+new_h_pc=50
+[FUTURE]
+x=1

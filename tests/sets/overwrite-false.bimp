@@ -1,0 +1,6 @@
+# BIMP 3.0
+# an existing file is kept
+# overwrite: false
+# existing: photo.png
+[FLIPROTATE]
+flip_h=true

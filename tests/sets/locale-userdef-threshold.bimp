@@ -1,0 +1,5 @@
+# BIMP 3.0
+# locale: en_DK.UTF-8
+[USERDEF0]
+procedure=gimp-drawable-threshold
+config=(channel red)\n(low-threshold 0.25)\n(high-threshold 0.75)\n

@@ -1,0 +1,6 @@
+# BIMP 3.0
+# the output folder is created
+# output: new/deeper
+# output-state: missing
+[FLIPROTATE]
+flip_h=true

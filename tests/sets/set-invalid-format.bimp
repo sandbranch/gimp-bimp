@@ -1,0 +1,4 @@
+# BIMP 3.0
+# expect: status=execution-error
+[CHANGEFORMAT]
+format=99

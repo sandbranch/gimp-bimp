@@ -1,0 +1,8 @@
+# BIMP 3.0
+# locale: en_DK.UTF-8
+[CROP]
+manual=false
+ratio=9
+custom_ratio1=2.5
+custom_ratio2=1
+start_pos=0

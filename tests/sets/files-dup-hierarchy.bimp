@@ -1,5 +1,6 @@
 # BIMP 3.0
-# inputs: photo.png sub/deep.png
+# the same name in two folders
+# inputs: a/dup.png b/dup.png
 # keep-folder-hierarchy: true
 [FLIPROTATE]
 flip_h=true

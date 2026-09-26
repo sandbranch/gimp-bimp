@@ -1,0 +1,6 @@
+# BIMP 3.0
+# an existing file is replaced, keeping its date
+# existing: photo.png
+# keep-dates: true
+[FLIPROTATE]
+flip_h=true

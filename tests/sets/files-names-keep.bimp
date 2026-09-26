@@ -1,0 +1,6 @@
+# BIMP 3.0
+# inputs: "with space.png" "unicode åäö ü.png" UPPER.JPG noext
+# without a format change a file without extension cannot be saved
+# expect: errors=1
+[FLIPROTATE]
+flip_h=true

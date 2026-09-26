@@ -1,0 +1,8 @@
+# BIMP 3.0
+# "Other GIMP procedure" on every pixel format
+# inputs: gray.png gray-alpha.png indexed.png rgb16.png float.tif alpha.png multilayer.xcf
+[USERDEF0]
+procedure=gimp-drawable-invert
+config=(linear no)
+[CHANGEFORMAT]
+format=4

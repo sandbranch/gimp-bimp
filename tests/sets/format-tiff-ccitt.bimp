@@ -1,0 +1,8 @@
+# BIMP 3.0
+# CCITT compression, for a black and white image; GIMP refuses the default palette (NULL) of gimp-image-convert-indexed
+[USERDEF0]
+procedure=gimp-image-convert-indexed
+config=(palette-type mono)\n(num-cols 2)\n(palette "")\n
+[CHANGEFORMAT]
+format=6
+compression=5

@@ -1,0 +1,4 @@
+# BIMP 3.0
+# inputs: exif.jpg
+[FLIPROTATE]
+flip_h=true

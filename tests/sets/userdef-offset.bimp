@@ -1,0 +1,5 @@
+# BIMP 3.0
+# "Other GIMP procedure" with a color, an enum and numbers, as GIMP 3.2 serializes them
+[USERDEF0]
+procedure=gimp-drawable-offset
+config=(wrap-around no)\n(fill-type color)\n(color\n    (color "R'G'B'A float" 16 "\\0\\0\\200\\77\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\200\\77" 0))\n(offset-x 50)\n(offset-y 0)\n

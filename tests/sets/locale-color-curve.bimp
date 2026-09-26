@@ -1,0 +1,4 @@
+# BIMP 3.0
+# locale: en_DK.UTF-8
+[COLOR]
+curve_file=@IMAGES@/darken.curves

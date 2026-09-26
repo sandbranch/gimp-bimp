@@ -1,0 +1,7 @@
+# BIMP 3.0
+# every pixel format saved back in its own format
+# inputs: gray.png gray-alpha.png indexed.png rgb16.png float.tif alpha.png multilayer.xcf indexed.gif
+[FLIPROTATE]
+flip_h=true
+[SHARPBLUR]
+amount=20

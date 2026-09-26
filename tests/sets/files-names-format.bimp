@@ -1,0 +1,6 @@
+# BIMP 3.0
+# inputs: "with space.png" "unicode åäö ü.png" UPPER.JPG noext
+[FLIPROTATE]
+flip_h=true
+[CHANGEFORMAT]
+format=4

@@ -1,0 +1,5 @@
+# BIMP 3.0
+# a procedure on the image, not a drawable
+[USERDEF0]
+procedure=gimp-image-flip
+config=(flip-type vertical)\n

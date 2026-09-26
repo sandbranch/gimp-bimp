@@ -1,0 +1,8 @@
+# BIMP 3.0
+# locale: en_DK.UTF-8
+[RESIZE]
+resize_mode_width=2
+resize_mode_height=2
+change_res=true
+new_res_x=300.5
+new_res_y=300.5
