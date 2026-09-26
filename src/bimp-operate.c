@@ -1170,7 +1170,8 @@ static const gchar* jpeg_dct_name(int dct)
 
 static const gchar* tiff_compression_name(int compression)
 {
-    static const gchar *names[] = { "none", "lzw", "packbits", "adobe_deflate", "jpeg" };
+    /* in the order of the window's list, which is GIMP 2's */
+    static const gchar *names[] = { "none", "lzw", "packbits", "adobe_deflate", "jpeg", "ccittfax3", "ccittfax4" };
     return (compression >= 0 && compression < G_N_ELEMENTS(names)) ? names[compression] : "none";
 }
 
