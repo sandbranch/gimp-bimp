@@ -36,7 +36,7 @@ static void write_userdef(userdef_settings, GKeyFile*, int);
 static manipulation read_userdef(GKeyFile*, int);
 
 static int watermark_count, userdef_count;
-static int loaded_build;
+static gboolean parse_failed; /* a manipulation in the file has invalid settings */
 
 gboolean bimp_serialize_to_file(gchar* filename)
 {
@@ -146,6 +146,7 @@ static void append_manipulation_details(manipulation man, GKeyFile* output_file)
     }
 }
 
+/* returns NULL if the file has no manipulation, or one with invalid settings */
 static GSList* parse_manipulations(GKeyFile* file, int version) 
 {
     GSList* manipulations = NULL;
@@ -153,9 +154,12 @@ static GSList* parse_manipulations(GKeyFile* file, int version)
     gsize count = 0;
     gchar** groups;
     
+    parse_failed = FALSE;
     groups = g_key_file_get_groups(file, &count);
-    int i = 0;
+    gsize i = 0;
     while (i < count) {
+        /* a group BIMP does not know is skipped */
+        newman = NULL;
         
         if (strcmp(groups[i], "RESIZE") == 0) {
             newman = read_resize(file);
@@ -199,6 +203,12 @@ static GSList* parse_manipulations(GKeyFile* file, int version)
         if (newman != NULL) manipulations = g_slist_append(manipulations, newman);
         
         i++;
+    }
+    g_strfreev(groups);
+    
+    if (parse_failed) {
+        g_slist_free(manipulations);
+        return NULL;
     }
     
     return manipulations;
@@ -341,6 +351,13 @@ static manipulation read_crop(GKeyFile* file)
             
         if (g_key_file_has_key(file, group_name, "start_pos", NULL)) 
             settings->start_pos = g_key_file_get_integer(file, group_name, "start_pos", NULL);
+        
+        /* the ratio indexes crop_preset_ratio, a custom one divides */
+        if (!settings->manual && (settings->ratio < 0 || settings->ratio >= CROP_PRESET_END ||
+            (settings->ratio == CROP_PRESET_CUSTOM && (settings->custom_ratio1 <= 0 || settings->custom_ratio2 <= 0)))) {
+            g_printerr("BIMP: invalid crop ratio in the manipulation set\n");
+            parse_failed = TRUE;
+        }
     }
     
     return man;
@@ -750,6 +767,11 @@ static manipulation read_changeformat(GKeyFile* file)
         
         if (g_key_file_has_key(file, group_name, "format", NULL)) {
             settings->format = g_key_file_get_integer(file, group_name, "format", NULL);
+            if (settings->format < 0 || settings->format >= FORMAT_END) {
+                g_printerr("BIMP: unknown format %d in the manipulation set\n", settings->format);
+                parse_failed = TRUE;
+                settings->format = FORMAT_JPEG;
+            }
         
             if (settings->format == FORMAT_GIF) {
                 settings->params = format_params_new(settings->format);
