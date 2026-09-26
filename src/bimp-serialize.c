@@ -58,37 +58,44 @@ gboolean bimp_serialize_to_file(gchar* filename)
     return result;
 }
 
+/* the version in "BIMP 2.6" as 2006, or 0 if there is none */
+static int parse_version(const gchar* text)
+{
+    int buildnumber = 0;
+    /* BIMP writes "#BIMP 2.6"; hand-written sets often have "# BIMP 2.6" */
+    GRegex *regex = g_regex_new ("^\\s*BIMP\\s(\\d+)\\.(\\d+)", 0, 0, NULL);
+    GMatchInfo *match_info = NULL;
+
+    if (text != NULL && g_regex_match (regex, text, 0, &match_info)) {
+        gchar *major = g_match_info_fetch (match_info, 1);
+        gchar *minor = g_match_info_fetch (match_info, 2);
+        buildnumber = (g_ascii_strtoll(major, NULL, 10) * 1000) + g_ascii_strtoll(minor, NULL, 10);
+        g_free(major);
+        g_free(minor);
+    }
+    g_match_info_free (match_info);
+    g_regex_unref (regex);
+
+    return buildnumber;
+}
+
 gboolean bimp_deserialize_from_file(gchar* filename)
 {
     gboolean result;
-    
+
     GKeyFile* input_file = g_key_file_new();
     g_key_file_set_list_separator(input_file, ';');
-    
+
     if ((result = g_key_file_load_from_file (input_file, filename, G_KEY_FILE_KEEP_COMMENTS, NULL))) {
-        
-		// read build code
-		int buildnumber = 0;
-		gchar* header = g_key_file_get_comment(input_file, NULL, NULL, NULL);
-		/* BIMP writes "#BIMP 2.6"; hand-written sets often have "# BIMP 2.6" */
-		GRegex *regex = g_regex_new ("^\\s*BIMP\\s(\\d+)\\.(\\d+)", 0, 0, NULL);
-		
-		GMatchInfo *match_info;
-		g_regex_match (regex, header, 0, &match_info);
-		while (g_match_info_matches (match_info))
-		{
-			gchar *major = g_match_info_fetch (match_info, 1);
-			int major_i = g_ascii_strtoll(major, NULL, 10);
-			gchar *minor = g_match_info_fetch (match_info, 2);
-			int minor_i = g_ascii_strtoll(minor, NULL, 10);
-			buildnumber = (major_i * 1000) + minor_i;
-			if (buildnumber > 0) break;
-			
-			g_match_info_next (match_info, NULL);
-		}
-		g_match_info_free (match_info);
-		g_regex_unref (regex);
-		
+
+        // read build code
+        gchar* header = g_key_file_get_comment(input_file, NULL, NULL, NULL);
+        int buildnumber = parse_version(header);
+        g_free(header);
+        /* every BIMP since 1.0 writes its version: a file without one was
+         * written by hand, for the current format */
+        if (buildnumber <= 0) buildnumber = parse_version("BIMP " PLUG_IN_VERSION);
+
         GSList* new_list = parse_manipulations(input_file, buildnumber);
         if (new_list != NULL) {
             g_slist_free(bimp_selected_manipulations);
