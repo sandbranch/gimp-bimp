@@ -1133,6 +1133,44 @@ static void cfg_set(GimpProcedureConfig *config, const gchar *name, ...)
     va_end(args);
 }
 
+/* GIMP 3's exporters take the metadata to write as arguments, which are off
+ * unless given: they are set as the user's preferences say (Image Import &
+ * Export), like GIMP 2's exporters did. An exporter still leaves out what the
+ * image does not have. */
+static void set_metadata_defaults(GimpProcedureConfig *config)
+{
+    static const struct { const gchar *name; gboolean (*preference)(void); } props[] = {
+        { "include-exif", gimp_export_exif },
+        { "include-xmp", gimp_export_xmp },
+        { "include-iptc", gimp_export_iptc },
+        { "include-color-profile", gimp_export_color_profile },
+        { "include-thumbnail", gimp_export_thumbnail },
+        { "include-comment", gimp_export_comment },
+    };
+    guint i;
+
+    for (i = 0; i < G_N_ELEMENTS(props); i++) {
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(config), props[i].name))
+            g_object_set(config, props[i].name, props[i].preference(), NULL);
+    }
+}
+
+/* the exporter for a file that keeps its format, if it has metadata options */
+static const gchar* exporter_with_metadata(char *filename)
+{
+    if (file_has_extension(filename, ".jpg") || file_has_extension(filename, ".jpeg") || file_has_extension(filename, ".jpe"))
+        return "file-jpeg-export";
+    if (file_has_extension(filename, ".png"))
+        return "file-png-export";
+    if (file_has_extension(filename, ".tif") || file_has_extension(filename, ".tiff"))
+        return "file-tiff-export";
+    if (file_has_extension(filename, ".webp"))
+        return "file-webp-export";
+    if (file_has_extension(filename, ".avif"))
+        return "file-heif-av1-export";
+    return NULL;
+}
+
 static GimpProcedureConfig* export_config(const gchar *proc_name, GimpProcedure **proc, image_output out)
 {
     GimpProcedureConfig *config;
@@ -1152,6 +1190,7 @@ static GimpProcedureConfig* export_config(const gchar *proc_name, GimpProcedure 
         "file", file,
         NULL);
     g_object_unref(file);
+    set_metadata_defaults(config);
 
     return config;
 }
@@ -1359,6 +1398,10 @@ static gboolean image_save(format_type type, image_output out, format_params par
         // for HEIF, the default values are "0 quality"... save lossless instead
         if ((file_has_extension(out->filename, ".heif") || file_has_extension(out->filename, ".heic"))) {
             return save_heif(out, "file-heif-export", 100, TRUE);
+        }
+        else if (exporter_with_metadata(out->filename) != NULL) {
+            // with the exporter's default settings, as gimp_file_save() would, and the metadata
+            config = export_config(exporter_with_metadata(out->filename), &proc, out);
         }
         else {
             GFile *file = g_file_new_for_path(out->filepath);
