@@ -48,9 +48,13 @@ static gboolean list_contains_rename;
 static gboolean list_contains_watermark;
 static gboolean list_contains_savingplugin;
 
+// set when a manipulation of the current image failed: the image counts as an error
+static gboolean manipulation_failed;
+
 // set of variables to be used when doing Curve color correction
 // they are global so the batch process will read the source curve file once
 static gboolean colorcurve_init;
+static gboolean colorcurve_ok;
 static int colorcurve_num_points_v;
 static gdouble* colorcurve_ctr_points_v;
 static int colorcurve_num_points_r;
@@ -317,6 +321,11 @@ static gboolean process_image(gpointer parent)
         success = FALSE;
         goto process_end;
     }
+    if (manipulation_failed) {
+        // still saved, with the manipulations that worked, like before
+        g_printerr("BIMP: some manipulations failed on %s\n", orig_filename);
+        success = FALSE;
+    }
 
     time_t mod_time = -1;
     if (will_overwrite && bimp_opt_keepdates) {
@@ -416,6 +425,7 @@ gboolean bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_fi
     GFile *file = g_file_new_for_path(orig_filename);
     imageout->image = gimp_file_load(GIMP_RUN_NONINTERACTIVE, file);
     g_object_unref(file);
+    manipulation_failed = FALSE;
 
     if (imageout->image == NULL) return FALSE;
 
@@ -434,7 +444,10 @@ gboolean bimp_apply_drawable_manipulations(image_output imageout, gchar* orig_fi
         GSList *iterator = NULL;
         for (iterator = watermarks; iterator; iterator = iterator->next) {
             g_print("Applying WATERMARK...\n");
-            apply_watermark((watermark_settings)(((manipulation)(iterator->data))->settings), imageout);
+            if (!apply_watermark((watermark_settings)(((manipulation)(iterator->data))->settings), imageout)) {
+                g_printerr("BIMP: the watermark failed\n");
+                manipulation_failed = TRUE;
+            }
         }
         g_slist_free(watermarks);
     }
@@ -473,6 +486,8 @@ static gboolean apply_manipulation(manipulation man, image_output out)
         g_print("Applying %s...\n", ((userdef_settings)(man->settings))->procedure);
         success = apply_userdef((userdef_settings)(man->settings), out);
     }
+
+    if (!success) manipulation_failed = TRUE;
 
     return success;
 }
@@ -735,7 +750,7 @@ static gboolean apply_color(color_settings settings, image_output out)
         if (!colorcurve_init) { // read from the curve file only the first time
             colorcurve_num_points_v = colorcurve_num_points_r = colorcurve_num_points_g = 0;
             colorcurve_num_points_b = colorcurve_num_points_a = 0;
-            success = parse_curve_file(
+            colorcurve_ok = parse_curve_file(
                 settings->curve_file,
                 &colorcurve_num_points_v, &colorcurve_ctr_points_v,
                 &colorcurve_num_points_r, &colorcurve_ctr_points_r,
@@ -743,10 +758,11 @@ static gboolean apply_color(color_settings settings, image_output out)
                 &colorcurve_num_points_b, &colorcurve_ctr_points_b,
                 &colorcurve_num_points_a, &colorcurve_ctr_points_a
             );
+            if (!colorcurve_ok) g_printerr("BIMP: could not read the curve file %s\n", settings->curve_file);
 
             colorcurve_init = TRUE;
         }
-        else success = TRUE;
+        success = colorcurve_ok;
 
         if (success) {
             /* gimp:curves needs a GimpCurve object, which plug-ins cannot
@@ -912,7 +928,8 @@ static gboolean apply_watermark(watermark_settings settings, image_output out)
     else {
         if (settings->image_file == NULL || !g_file_test(settings->image_file, G_FILE_TEST_IS_REGULAR)) {
             // error, can't access image file
-            return TRUE;
+            g_printerr("BIMP: no watermark image %s\n", settings->image_file ? settings->image_file : "");
+            return FALSE;
         }
 
         GFile *file = g_file_new_for_path(settings->image_file);
@@ -1003,11 +1020,12 @@ static void calc_watermark_xy (int imgwidth, int imgheight, int wmwidth, int wmh
 
 /* Creates the config of a user-defined procedure with the user's settings.
  * Returns NULL if the procedure does not exist. */
-GimpProcedureConfig* bimp_userdef_create_config(userdef_settings settings, GimpProcedure** procedure)
+GimpProcedureConfig* bimp_userdef_create_config(userdef_settings settings, GimpProcedure** procedure, gboolean* settings_ok)
 {
     GimpProcedure *proc = gimp_pdb_lookup_procedure(gimp_get_pdb(), settings->procedure);
     GimpProcedureConfig *config;
 
+    if (settings_ok) *settings_ok = TRUE;
     if (proc == NULL) return NULL;
     if (procedure) *procedure = proc;
 
@@ -1017,6 +1035,7 @@ GimpProcedureConfig* bimp_userdef_create_config(userdef_settings settings, GimpP
         if (!gimp_config_deserialize_string(GIMP_CONFIG(config), settings->config, -1, NULL, &error)) {
             g_printerr("BIMP: settings of %s: %s\n", settings->procedure, error ? error->message : "?");
             g_clear_error(&error);
+            if (settings_ok) *settings_ok = FALSE;
         }
     }
 
@@ -1055,14 +1074,20 @@ static gboolean apply_userdef(userdef_settings settings, image_output out)
 {
     gboolean success = TRUE;
     GimpProcedure *proc = NULL;
-    GimpProcedureConfig *config = bimp_userdef_create_config(settings, &proc);
+    gboolean settings_ok;
+    GimpProcedureConfig *config = bimp_userdef_create_config(settings, &proc, &settings_ok);
 
     if (config == NULL) {
         g_printerr("BIMP: GIMP has no procedure %s\n", settings->procedure);
         return FALSE;
     }
+    if (!settings_ok) {
+        // not with other settings than the user's
+        g_object_unref(config);
+        return FALSE;
+    }
 
-    GimpLayer *single_drawable = gimp_image_merge_visible_layers(out->image, GIMP_CLIP_TO_IMAGE);
+    GimpLayer *single_drawable = merge_layers(out->image);
     gimp_selection_none(out->image);
 
     bimp_userdef_set_image(proc, config, out->image, GIMP_DRAWABLE(single_drawable));

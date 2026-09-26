@@ -274,7 +274,7 @@ static void edit_settings (GtkButton *button, gpointer data)
 {
     struct manip_userdef_set temp = { temp_procedure, temp_config };
     GimpProcedure *proc = NULL;
-    GimpProcedureConfig *config = bimp_userdef_create_config(&temp, &proc);
+    GimpProcedureConfig *config = bimp_userdef_create_config(&temp, &proc, NULL);
     GtkWidget *dialog;
     GList *args;
 
