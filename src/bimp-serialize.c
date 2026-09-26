@@ -9,7 +9,6 @@
 #include <libgimp/gimp.h>
 #include <string.h>
 #include <stdlib.h>
-#include <locale.h>
 #include "bimp.h"
 #include "bimp-manipulations.h"
 #include "bimp-utils.h"
@@ -456,9 +455,8 @@ gboolean parse_curve_file(
     FILE* pFile;
     pFile = fopen (file, "r");
     
-    char* old_locale = setlocale(LC_NUMERIC, "");
-    setlocale(LC_NUMERIC, "C");
-    
+    /* numbers are read with g_ascii_strtod, which always takes a decimal point */
+    const char* points_prefix = "    (points ";
     char line[2400];
     char channel_name[6];
     int num_points_temp = 0;
@@ -476,7 +474,7 @@ gboolean parse_curve_file(
         }
         
         // reached the first "(channel " line
-        while (sscanf (line, "(channel %[a-z])", channel_name) == 1) {
+        while (sscanf (line, "(channel %5[a-z])", channel_name) == 1) {
             
             g_free(ctr_points_temp);
             ctr_points_temp = NULL;
@@ -500,15 +498,15 @@ gboolean parse_curve_file(
             // number of points and list
             double pX, pY;
             int p_count = 0;
-            char* token = strtok(line + strlen(g_strdup_printf("    (points ")), " ");
-            int num_points = atoi(token); // first token holds the number of points
+            if (!g_str_has_prefix(line, points_prefix)) goto err;
+            char* token = strtok(line + strlen(points_prefix), " "); // the number of values, not needed
             
             token = strtok(NULL, " "); 
             while (token) {
-                pX = atof(token);
+                pX = g_ascii_strtod(token, NULL);
                 token = strtok(NULL, " ");
                 if (!token) goto err;
-                pY = atof(token);
+                pY = g_ascii_strtod(token, NULL);
                 
                 if (pX >= 0 && pX <= 1 &&
                     pY >= 0 && pY <= 1) 
@@ -568,14 +566,12 @@ gboolean parse_curve_file(
         
         // "# end of curves tool settings"
 finish:
-        setlocale(LC_NUMERIC, old_locale);
         g_free(ctr_points_temp);
         fclose (pFile);
         return TRUE;
     }
     
 err:
-    setlocale(LC_NUMERIC, old_locale);
     if (pFile != NULL) fclose (pFile);
     if (ctr_points_temp != NULL) g_free(ctr_points_temp);
     return FALSE;
