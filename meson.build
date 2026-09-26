@@ -46,14 +46,28 @@ sources = files(
   'src/manipulation-gui/gui-watermark.c',
 )
 
+c_args = [
+  '-DGETTEXT_PACKAGE="' + gettext_package + '"',
+  '-DPLUG_IN_VERSION="' + meson.project_version() + '"',
+]
+
 executable('bimp', sources, icons,
   dependencies : [gimp_dep, gimpui_dep, gtk_dep, math_dep],
-  c_args : [
-    '-DGETTEXT_PACKAGE="' + gettext_package + '"',
-    '-DPLUG_IN_VERSION="' + meson.project_version() + '"',
-  ],
+  c_args : c_args,
   install : true,
   install_dir : bimpdir,
 )
+
+# the .bimp file format, tested without GIMP running: meson test -C build
+test_serialize = executable('test-serialize',
+  'tests/unit/test-serialize.c',
+  'src/bimp-manipulations.c',
+  'src/bimp-serialize.c',
+  'src/bimp-utils.c',
+  dependencies : [gimp_dep, gtk_dep, math_dep],
+  c_args : c_args,
+  build_by_default : false,
+)
+test('serialize', test_serialize)
 
 subdir('po')
