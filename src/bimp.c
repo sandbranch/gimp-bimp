@@ -25,6 +25,7 @@
 #include <libgimp/gimp.h>
 #include <libgimp/gimpui.h>
 #include <gtk/gtk.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include "bimp.h"
@@ -148,8 +149,8 @@ static GimpProcedure* bimp_create_procedure (GimpPlugIn *plug_in, const gchar *n
             "Files", "Paths of the image files to process",
             G_PARAM_READWRITE);
         gimp_procedure_add_file_argument (procedure, "output-folder",
-            "Output folder", "Folder to write the results into",
-            GIMP_FILE_CHOOSER_ACTION_SELECT_FOLDER, FALSE, NULL, G_PARAM_READWRITE);
+            "Output folder", "Folder to write the results into (created if it does not exist)",
+            GIMP_FILE_CHOOSER_ACTION_CREATE_FOLDER, FALSE, NULL, G_PARAM_READWRITE);
         gimp_procedure_add_boolean_argument (procedure, "overwrite",
             "Overwrite", "Overwrite existing files in the output folder",
             FALSE, G_PARAM_READWRITE);
@@ -217,18 +218,29 @@ static GimpValueArray* bimp_run_batch (GimpProcedure *procedure, GimpProcedureCo
 
     bimp_interactive = FALSE;
 
-    if (!bimp_deserialize_from_file (g_file_peek_path (set_file))) {
+    if (!bimp_deserialize_from_file ((gchar*)g_file_peek_path (set_file))) {
         GError *error = g_error_new (GIMP_PLUG_IN_ERROR, 0,
             "Could not read the manipulation set %s", g_file_peek_path (set_file));
         return_vals = gimp_procedure_new_return_values (procedure, GIMP_PDB_EXECUTION_ERROR, error);
         goto out;
     }
 
-    bimp_input_filenames = NULL;
-    for (i = 0; files[i] != NULL; i++)
-        bimp_input_filenames = g_slist_append (bimp_input_filenames, g_strdup (files[i]));
-
     bimp_output_folder = g_file_get_path (output_folder);
+    if (bimp_output_folder == NULL || g_mkdir_with_parents (bimp_output_folder, 0777) != 0) {
+        GError *error = g_error_new (GIMP_PLUG_IN_ERROR, 0,
+            "Could not create the output folder %s: %s",
+            bimp_output_folder ? bimp_output_folder : g_file_peek_path (output_folder), g_strerror (errno));
+        return_vals = gimp_procedure_new_return_values (procedure, GIMP_PDB_EXECUTION_ERROR, error);
+        goto out;
+    }
+
+    /* absolute paths, which keeping the folder hierarchy compares */
+    bimp_input_filenames = NULL;
+    for (i = 0; files[i] != NULL; i++) {
+        GFile *file = g_file_new_for_path (files[i]);
+        bimp_input_filenames = g_slist_append (bimp_input_filenames, g_file_get_path (file));
+        g_object_unref (file);
+    }
     bimp_opt_alertoverwrite = overwrite ? BIMP_OVERWRITE_SKIP_ASK : BIMP_DONT_OVERWRITE_SKIP_ASK;
     bimp_opt_keepfolderhierarchy = keep_hierarchy;
     bimp_opt_keepdates = keep_dates;
