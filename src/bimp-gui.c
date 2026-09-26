@@ -473,7 +473,7 @@ static void show_preview (GtkTreeView *tree_view, gpointer data)
         GtkWidget *image_forward;
         
         GSList* selection = get_treeview_selection();
-        if (selection == NULL && g_slist_length(selection) != 1) return;
+        if (selection == NULL || g_slist_length(selection) != 1) return;
         
         char* selected_str = g_slist_nth_data(selection, 0);
         
@@ -534,14 +534,16 @@ static void show_preview (GtkTreeView *tree_view, gpointer data)
         gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area(GTK_DIALOG(dialog_preview))), vbox);
         gtk_widget_show_all(dialog_preview);
         
-        if (gtk_dialog_run (GTK_DIALOG(dialog_preview)) == GTK_RESPONSE_CLOSE) {
-            gtk_widget_destroy (dialog_preview);
-            gimp_image_delete(imageout_orig->image);
-            gimp_image_delete(imageout_final->image);
-            g_free(imageout_final->drawables);
-            g_free(imageout_orig);
-            g_free(imageout_final);
-        }
+        /* also when closed with Escape or the window's button */
+        gtk_dialog_run (GTK_DIALOG(dialog_preview));
+        gtk_widget_destroy (dialog_preview);
+        g_clear_object(&pixbuf_orig);
+        g_clear_object(&pixbuf_final);
+        gimp_image_delete(imageout_orig->image);
+        gimp_image_delete(imageout_final->image);
+        g_free(imageout_final->drawables);
+        g_free(imageout_orig);
+        g_free(imageout_final);
     }
 }
 
