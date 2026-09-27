@@ -1,10 +1,10 @@
 #!/bin/sh
 # Opens the BIMP window in the Flatpak GIMP on a Broadway display, so it can
-# be looked at and clicked with gimp-plugin-devtools/gui/cdp.mjs:
+# be looked at and clicked with gimp-devtools/gui/cdp.mjs:
 #   tests/gui/start.sh &           # BIMP window on http://127.0.0.1:8085/
 #   google-chrome --headless=new --remote-debugging-port=9333 \
 #     --user-data-dir=/tmp/cdp-chrome about:blank &
-#   node ../gimp-plugin-devtools/gui/cdp.mjs size:1400,900 \
+#   node ../gimp-devtools/gui/cdp.mjs size:1400,900 \
 #     nav:http://127.0.0.1:8085/ wait:5000 shot:bimp.png
 # BIMP_OPEN_IMAGE=<file> opens that image in GIMP first. BIMP is the one
 # tests/run.sh built and installed into its throwaway profile

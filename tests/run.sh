@@ -1,13 +1,13 @@
 #!/bin/sh
 # Tests BIMP inside the Flatpak GIMP, without a window:
-#  - builds BIMP into tests/output/build (with gimp-plugin-devtools/gimp-build.sh)
+#  - builds BIMP into tests/output/build (with gimp-devtools/gimp-build.sh)
 #    and runs the unit tests of the .bimp format (meson test);
 #  - runs GIMP with a profile of its own, tests/output/profile
 #    (GIMP3_DIRECTORY), which has only this build of BIMP in its plug-in
 #    folder: an installed BIMP and the user's GIMP settings are neither used
 #    nor changed, and a GIMP that is open does not matter; the build and
 #    GIMP run isolated from the user's folders (tests/isolate.sh, with
-#    gimp-plugin-devtools/gimp-run.sh): HOME and the XDG folders inside
+#    gimp-devtools/gimp-run.sh): HOME and the XDG folders inside
 #    the Flatpak point into tests/output/gimp-home, so nothing lands in
 #    ~/.var/app/org.gimp.GIMP either;
 #  - applies each set in tests/sets to test images with plug-in-bimp-batch
@@ -24,16 +24,16 @@
 #
 # The first run with a new profile takes about a minute longer: GIMP
 # queries all of its plug-ins once. Before and after, it lists the user's
-# folders of GIMP and the other apps (gimp-plugin-devtools/snapshot.sh)
+# folders of GIMP and the other apps (gimp-devtools/snapshot.sh)
 # and fails if anything there changed. Prints PASS or FAIL per test; the
 # exit status is 1 if any failed.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 src=$(dirname "$here")
 out="$here/output"
-devtools=${GIMP_DEVTOOLS:-$(dirname "$src")/gimp-plugin-devtools}
+devtools=${GIMP_DEVTOOLS:-$(dirname "$src")/gimp-devtools}
 if [ ! -x "$devtools/gimp-build.sh" ]; then
-    echo "needs gimp-plugin-devtools next to this folder, or GIMP_DEVTOOLS=<its folder>" >&2
+    echo "needs gimp-devtools next to this folder, or GIMP_DEVTOOLS=<its folder>" >&2
     exit 2
 fi
 GIMP_RUN_HOME=$out/gimp-home

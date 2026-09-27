@@ -2,7 +2,7 @@ BIMP. Batch Image Manipulation Plugin for GIMP.
 ===============================================
 
 > **This is the GIMP 3 version of BIMP**, maintained at
-> [sandbranch/gimp-plugin-bimp](https://github.com/sandbranch/gimp-plugin-bimp)
+> [sandbranch/gimp-bimp](https://github.com/sandbranch/gimp-bimp)
 > (branch `gimp3`) while the original project has no GIMP 3 release. The
 > original, for GIMP 2.10, is
 > [alessandrofrancesconi/gimp-plugin-bimp](https://github.com/alessandrofrancesconi/gimp-plugin-bimp).
@@ -58,7 +58,7 @@ This installs `bimp/bimp` and its translations into the plug-in folder.
 Without `-Dplugindir` it goes into GIMP's system folder (needs root).
 
 For the Flatpak version of GIMP, build inside it with
-[gimp-plugin-devtools](https://github.com/sandbranch/gimp-plugin-devtools):
+[gimp-devtools](https://github.com/sandbranch/gimp-devtools):
 
     gimp-build.sh . meson setup build -Dplugindir=\$GIMP_PLUGINDIR
     gimp-build.sh . ninja -C build install
@@ -82,7 +82,7 @@ load, odd file names, gray, indexed, 16-bit, float and multi-layer images,
 existing and read-only output folders, metadata, "Other GIMP procedure..."
 with several kinds of settings, a locale with a decimal comma). It prints
 PASS or FAIL per test and exits with 1 if any failed. It needs
-[gimp-plugin-devtools](https://github.com/sandbranch/gimp-plugin-devtools)
+[gimp-devtools](https://github.com/sandbranch/gimp-devtools)
 next to this folder (or `GIMP_DEVTOOLS=<folder>`), Python 3 with numpy and
 Pillow, and takes a minute longer the first time.
 
@@ -96,6 +96,6 @@ in a browser.
 Support this project
 --------------------
 
-For the GIMP 3 version: https://github.com/sandbranch/gimp-plugin-bimp/issues
+For the GIMP 3 version: https://github.com/sandbranch/gimp-bimp/issues
 
 For the original: http://github.com/alessandrofrancesconi/gimp-plugin-bimp/issues
