@@ -5,7 +5,11 @@
 #  - runs GIMP with a profile of its own, tests/output/profile
 #    (GIMP3_DIRECTORY), which has only this build of BIMP in its plug-in
 #    folder: an installed BIMP and the user's GIMP settings are neither used
-#    nor changed, and a GIMP that is open does not matter;
+#    nor changed, and a GIMP that is open does not matter; the build and
+#    GIMP run isolated from the user's folders (tests/isolate.sh, with
+#    gimp-plugin-devtools/gimp-run.sh): HOME and the XDG folders inside
+#    the Flatpak point into tests/output/gimp-home, so nothing lands in
+#    ~/.var/app/org.gimp.GIMP either;
 #  - applies each set in tests/sets to test images with plug-in-bimp-batch
 #    (tests/batch.py), once more for the sets that ask for a locale with a
 #    decimal comma, and checks the results (tests/check.py).
@@ -19,8 +23,10 @@
 #                          report fails the run
 #
 # The first run with a new profile takes about a minute longer: GIMP
-# queries all of its plug-ins once. Prints PASS or FAIL per test; the exit
-# status is 1 if any failed.
+# queries all of its plug-ins once. Before and after, it lists the user's
+# folders of GIMP and the other apps (gimp-plugin-devtools/snapshot.sh)
+# and fails if anything there changed. Prints PASS or FAIL per test; the
+# exit status is 1 if any failed.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 src=$(dirname "$here")
@@ -30,6 +36,12 @@ if [ ! -x "$devtools/gimp-build.sh" ]; then
     echo "needs gimp-plugin-devtools next to this folder, or GIMP_DEVTOOLS=<its folder>" >&2
     exit 2
 fi
+GIMP_RUN_HOME=$out/gimp-home
+export GIMP_RUN_HOME
+# shellcheck source=SCRIPTDIR/isolate.sh
+. "$here/isolate.sh"
+mkdir -p "$out"
+snapshot_take "$out/snapshot-before.txt"
 
 if [ -n "$BIMP_SANITIZE" ]; then
     build="$out/build-sanitize"
@@ -73,10 +85,10 @@ fi
 
 gimp_pass () {
     # $1: the locale of the pass, or empty
-    flatpak run --filesystem="$here" --env=GIMP3_DIRECTORY="$profile" \
+    gimp_run --flatpak --filesystem="$here" --env=GIMP3_DIRECTORY="$profile" \
       --env=BIMP_TESTS="$here" --env=BIMP_OUT="$run" --env=BIMP_ONLY="$ONLY" \
       --env=BIMP_LOCALE="$1" ${1:+--env=LC_ALL=$1} $san_env \
-      --command=gimp-console-3.2 org.gimp.GIMP --no-interface --no-data \
+      -- gimp-console-3.2 --no-interface --no-data \
       --batch-interpreter python-fu-eval \
       -b "exec(open('$here/batch.py').read())" --quit >> "$run/gimp.log" 2>&1 || true
 }
@@ -89,4 +101,5 @@ fi
 grep -E "^CASE |BIMP:|Plug-in crashed|fatal error" "$run/gimp.log" || true
 
 BIMP_SANITIZE="$BIMP_SANITIZE" python3 "$here/check.py" "$run" $ONLY || failed=1
+snapshot_check "$out/snapshot-before.txt" "" || failed=1
 exit $failed
