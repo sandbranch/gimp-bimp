@@ -7,6 +7,12 @@ BIMP. Batch Image Manipulation Plugin for GIMP.
 > original, for GIMP 2.10, is
 > [alessandrofrancesconi/gimp-plugin-bimp](https://github.com/alessandrofrancesconi/gimp-plugin-bimp).
 
+> Also worth a look for batch work in GIMP 3:
+> [Batcher](https://github.com/kamilburda/batcher) by Kamil Burda (BSD-3),
+> actively maintained, which batch-processes images and layers with a
+> preview. BIMP's strength is its list of ready manipulations and saved
+> sets; use whichever fits.
+
 With BIMP you can apply a set of GIMP manipulations on groups of images:
 resize, crop, flip or rotate, color correction, sharpen or blur,
 watermarks (text or image), change format and compression, rename with a
