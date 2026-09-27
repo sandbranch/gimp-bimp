@@ -25,5 +25,5 @@ gimp_run --flatpak --filesystem="$tests" ${image:+--filesystem="$(dirname "$imag
   --env=GDK_BACKEND=broadway --env=BROADWAY_DISPLAY=:5 \
   --env=GIMP3_DIRECTORY="$tests/output/profile" --env=BIMP_OPEN_IMAGE="$image" -- sh -c \
   "broadwayd --port 8085 :5 & bw=\$!; trap 'kill \$bw 2>/dev/null' EXIT INT TERM; \
-   sleep 2; gimp-3.2 --no-splash \
+   sleep 2; gimp-3.2 --new-instance --no-splash \
    --batch-interpreter python-fu-eval -b \"exec(open('$here/open-bimp.py').read())\""
