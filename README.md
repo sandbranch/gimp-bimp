@@ -54,8 +54,10 @@ What is new for GIMP 3
 Compiling and installing
 ------------------------
 
-Needs meson, ninja, a C compiler, gettext and the GIMP 3 development files
-(`libgimp-3.0-dev` on Debian and Ubuntu, `gimp-devel` on Fedora).
+Needs the native GIMP 3, meson, ninja, a C compiler, gettext and the GIMP 3
+development files (on Debian and Ubuntu
+`sudo apt install gimp libgimp-3.0-dev meson ninja-build gettext`,
+`gimp-devel` on Fedora).
 
     meson setup build -Dplugindir=$HOME/.config/GIMP/3.2/plug-ins
     ninja -C build install
@@ -63,8 +65,8 @@ Needs meson, ninja, a C compiler, gettext and the GIMP 3 development files
 This installs `bimp/bimp` and its translations into the plug-in folder.
 Without `-Dplugindir` it goes into GIMP's system folder (needs root).
 
-For the Flatpak version of GIMP, build inside it with
-[gimp-devtools](https://github.com/sandbranch/gimp-devtools):
+Or with [gimp-devtools](https://github.com/sandbranch/gimp-devtools),
+which finds the plug-in folder of the installed GIMP itself:
 
     gimp-build.sh . meson setup build -Dplugindir=\$GIMP_PLUGINDIR
     gimp-build.sh . ninja -C build install
@@ -79,7 +81,7 @@ Tests
 
 `tests/run.sh` builds BIMP into `tests/output`, runs the unit tests of the
 `.bimp` format (`meson test`, no GIMP needed), and then runs a headless
-GIMP (Flatpak) with a profile of its own in `tests/output/profile`
+native GIMP with a profile of its own in `tests/output/profile`
 (`GIMP3_DIRECTORY`), so an installed BIMP and your GIMP settings are not
 used or changed. It applies each set in `tests/sets` to test images with
 `plug-in-bimp-batch`: one per manipulation and format, a chain, BIMP 2
@@ -90,7 +92,10 @@ with several kinds of settings, a locale with a decimal comma). It prints
 PASS or FAIL per test and exits with 1 if any failed. It needs
 [gimp-devtools](https://github.com/sandbranch/gimp-devtools)
 next to this folder (or `GIMP_DEVTOOLS=<folder>`), Python 3 with numpy and
-Pillow, and takes a minute longer the first time.
+Pillow, and takes a minute longer the first time. GIMP offers HEIF export
+only when libheif has an HEVC encoder (on Debian and Ubuntu
+`sudo apt install libheif-plugin-x265`); without it the `format-heif` test
+fails.
 
 `BIMP_SANITIZE=1 tests/run.sh` does the same with BIMP built with
 AddressSanitizer and UndefinedBehaviorSanitizer; the plug-in runs so

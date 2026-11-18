@@ -1,5 +1,5 @@
 #!/bin/sh
-# Opens the BIMP window in the Flatpak GIMP on a Broadway display, so it can
+# Opens the BIMP window in the native GIMP on a Broadway display, so it can
 # be looked at and clicked with gimp-devtools/gui/cdp.mjs:
 #   tests/gui/start.sh &           # BIMP window on http://127.0.0.1:8085/
 #   google-chrome --headless=new --remote-debugging-port=9333 \
@@ -14,15 +14,13 @@
 # this script is interrupted).
 here=$(cd "$(dirname "$0")" && pwd)
 tests=$(dirname "$here")
-src=$(dirname "$tests")
 [ -d "$tests/output/profile/plug-ins" ] ||
   { echo "run tests/run.sh first: it installs BIMP into tests/output/profile" >&2; exit 1; }
 GIMP_RUN_HOME=${GIMP_RUN_HOME:-$tests/output/gimp-home}
 # shellcheck source=SCRIPTDIR/../isolate.sh
 . "$tests/isolate.sh"
 image=${BIMP_OPEN_IMAGE:+$(cd "$(dirname "$BIMP_OPEN_IMAGE")" && pwd)/$(basename "$BIMP_OPEN_IMAGE")}
-gimp_run --flatpak --filesystem="$tests" ${image:+--filesystem="$(dirname "$image")":ro} \
-  --env=GDK_BACKEND=broadway --env=BROADWAY_DISPLAY=:5 \
+gimp_run --env=GDK_BACKEND=broadway --env=BROADWAY_DISPLAY=:5 \
   --env=GIMP3_DIRECTORY="$tests/output/profile" --env=BIMP_OPEN_IMAGE="$image" -- sh -c \
   "broadwayd --port 8085 :5 & bw=\$!; trap 'kill \$bw 2>/dev/null' EXIT INT TERM; \
    sleep 2; gimp-3.2 --new-instance --no-splash \

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests BIMP inside the Flatpak GIMP, without a window:
+# Tests BIMP in the native GIMP, without a window:
 #  - builds BIMP into tests/output/build (with gimp-devtools/gimp-build.sh)
 #    and runs the unit tests of the .bimp format (meson test);
 #  - runs GIMP with a profile of its own, tests/output/profile
@@ -7,9 +7,8 @@
 #    folder: an installed BIMP and the user's GIMP settings are neither used
 #    nor changed, and a GIMP that is open does not matter; the build and
 #    GIMP run isolated from the user's folders (tests/isolate.sh, with
-#    gimp-devtools/gimp-run.sh): HOME and the XDG folders inside
-#    the Flatpak point into tests/output/gimp-home, so nothing lands in
-#    ~/.var/app/org.gimp.GIMP either;
+#    gimp-devtools/gimp-run.sh): HOME and the XDG folders point into
+#    tests/output/gimp-home;
 #  - applies each set in tests/sets to test images with plug-in-bimp-batch
 #    (tests/batch.py), once more for the sets that ask for a locale with a
 #    decimal comma, and checks the results (tests/check.py).
@@ -85,7 +84,7 @@ fi
 
 gimp_pass () {
     # $1: the locale of the pass, or empty
-    gimp_run --flatpak --filesystem="$here" --env=GIMP3_DIRECTORY="$profile" \
+    gimp_run --env=GIMP3_DIRECTORY="$profile" \
       --env=BIMP_TESTS="$here" --env=BIMP_OUT="$run" --env=BIMP_ONLY="$ONLY" \
       --env=BIMP_LOCALE="$1" ${1:+--env=LC_ALL=$1} $san_env \
       -- gimp-console-3.2 --no-interface --no-data \
